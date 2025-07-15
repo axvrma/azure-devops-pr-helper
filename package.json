@@ -1,0 +1,50 @@
+{
+    "name": "azure-devops-pr-helper",
+    "displayName": "Azure DevOps PR Helper",
+    "publisher": "mrcreatist",
+    "version": "0.1.0",
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "activationEvents": [
+        "onCommand:extension.raisePR",
+        "onCommand:extension.copyPrUrl"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "extension.raisePR",
+                "title": "Raise Azure DevOps PR"
+            },
+            {
+                "command": "extension.copyPrUrl",
+                "title": "Copy Last PR URL"
+            }
+        ],
+        "configuration": {
+            "title": "Azure DevOps PR Helper",
+            "properties": {
+                "azureDevopsPr.useAI": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When enabled, auto-generate PR title & description via AI (Claude)."
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.4",
+        "@types/vscode": "^1.101.0",
+        "typescript": "^4.5.4",
+        "vscode-test": "^1.6.1"
+    },
+    "dependencies": {
+        "axios": "^0.27.2"
+    }
+}
