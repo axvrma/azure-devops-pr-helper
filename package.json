@@ -8,31 +8,13 @@
     },
     "activationEvents": [
         "onCommand:extension.raisePR",
-        "onCommand:extension.copyPrUrl"
+        "onCommand:extension.copyPrUrl",
+        "onCommand:extension.clearPAT",
+        "onCommand:extension.openClaudeSettings",
+        "onCommand:extension.generateClaudeTitle",
+        "onCommand:extension.openClaudeSidebarSettings",
+        "onView:claudeSidebarView"
     ],
-    "main": "./out/extension.js",
-    "contributes": {
-        "commands": [
-            {
-                "command": "extension.raisePR",
-                "title": "Raise Azure DevOps PR"
-            },
-            {
-                "command": "extension.copyPrUrl",
-                "title": "Copy Last PR URL"
-            }
-        ],
-        "configuration": {
-            "title": "Azure DevOps PR Helper",
-            "properties": {
-                "azureDevopsPr.useAI": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "When enabled, auto-generate PR title & description via AI (Claude)."
-                }
-            }
-        }
-    },
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
@@ -46,5 +28,88 @@
     },
     "dependencies": {
         "axios": "^0.27.2"
+    },
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "extension.raisePR",
+                "title": "Raise PR (Azure DevOps)",
+                "category": "Azure DevOps"
+            },
+            {
+                "command": "extension.copyPrUrl",
+                "title": "Copy Last PR URL",
+                "category": "Azure DevOps"
+            },
+            {
+                "command": "extension.clearPAT",
+                "title": "Clear Azure DevOps PAT",
+                "category": "Azure DevOps"
+            },
+            {
+                "command": "extension.openClaudeSettings",
+                "title": "Open Claude & DevOps Settings",
+                "category": "Azure DevOps"
+            },
+            {
+                "command": "extension.generateClaudeTitle",
+                "title": "Generate Claude PR Title",
+                "category": "Azure DevOps"
+            },
+            {
+                "command": "extension.openClaudeSidebarSettings",
+                "title": "Open Claude Sidebar Settings",
+                "category": "Azure DevOps"
+            }
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "azureDevopsPr",
+                    "title": "DevOps PR",
+                    "icon": "resources/icon.png"
+                }
+            ]
+        },
+        "views": {
+            "azureDevopsPr": [
+                {
+                    "icon": "resources/icon.png",
+                    "id": "claudeSidebarView",
+                    "name": "Claude Title Generator"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "Azure DevOps PR Helper",
+            "properties": {
+                "azureDevopsPr.orgHost": {
+                    "type": "string",
+                    "default": "https://dpwhotfsonline.visualstudio.com",
+                    "description": "Default Azure DevOps organization URL (Host)."
+                },
+                "azureDevopsPr.project": {
+                    "type": "string",
+                    "default": "DTLP",
+                    "description": "Default Azure DevOps project name."
+                },
+                "azureDevopsPr.useAI": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Use Claude AI to suggest PR title and description when creating a PR."
+                },
+                "azureDevopsPr.generateDescription": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When using AI, automatically generate a PR description as well as the title."
+                },
+                "azureDevopsPr.autoAcceptAI": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "If true, automatically accept Claude-generated title/description without prompting the user."
+                }
+            }
+        }
     }
 }
