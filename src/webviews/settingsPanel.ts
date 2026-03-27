@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsEvents } from '../analytics';
 import { ExtensionServices, SettingsData, WebviewMessage } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS } from '../utils/constants';
 import { getNonce } from '../utils/helpers';
@@ -37,6 +38,9 @@ export class SettingsPanel {
         );
 
         SettingsPanel.currentPanel = new SettingsPanel(panel, services);
+
+        // Track settings panel opened
+        services.analytics.track(AnalyticsEvents.SETTINGS_OPENED);
     }
 
     private dispose(): void {
@@ -73,6 +77,18 @@ export class SettingsPanel {
                         if (message.key && message.value !== undefined) {
                             await this.services.setConfig(message.key, message.value);
                             this.postMessage({ command: 'configSaved', key: message.key });
+                            
+                            // Track settings saved
+                            this.services.analytics.track(AnalyticsEvents.SETTINGS_SAVED, {
+                                setting_key: message.key,
+                            });
+
+                            // Track telemetry toggle specifically
+                            if (message.key === CONFIG_KEYS.ENABLE_TELEMETRY) {
+                                this.services.analytics.track(AnalyticsEvents.TELEMETRY_TOGGLED, {
+                                    enabled: message.value as boolean,
+                                });
+                            }
                         }
                         break;
                     case 'testConnection':
@@ -108,6 +124,7 @@ export class SettingsPanel {
             apiVersion: this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion),
             hasAzurePAT,
             hasClaudeToken,
+            enableTelemetry: this.services.getConfig(CONFIG_KEYS.ENABLE_TELEMETRY, DEFAULT_CONFIG.enableTelemetry),
         };
 
         this.postMessage({ command: 'settings', data: settings as unknown as Record<string, unknown> });
@@ -132,9 +149,21 @@ export class SettingsPanel {
                 command: 'testResult',
                 data: { type: 'azure', success: true, message: `Connected! Found ${repos.length} repositories.` }
             });
+
+            // Track connection test success
+            this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
+                type: 'azure',
+                success: true,
+            });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             this.postMessage({ command: 'testResult', data: { type: 'azure', success: false, message } });
+
+            // Track connection test failure
+            this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
+                type: 'azure',
+                success: false,
+            });
         }
     }
 
@@ -156,12 +185,30 @@ export class SettingsPanel {
             const result = await client.generate('Say "Hello" in one word.');
             if (result.error) {
                 this.postMessage({ command: 'testResult', data: { type: 'claude', success: false, message: result.error } });
+                
+                // Track connection test failure
+                this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
+                    type: 'claude',
+                    success: false,
+                });
             } else {
                 this.postMessage({ command: 'testResult', data: { type: 'claude', success: true, message: 'Connected successfully!' } });
+                
+                // Track connection test success
+                this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
+                    type: 'claude',
+                    success: true,
+                });
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             this.postMessage({ command: 'testResult', data: { type: 'claude', success: false, message } });
+
+            // Track connection test failure
+            this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
+                type: 'claude',
+                success: false,
+            });
         }
     }
 
@@ -689,6 +736,25 @@ export class SettingsPanel {
         </div>
     </div>
 
+    <!-- Privacy Section -->
+    <div class="section">
+        <div class="section-header">
+            <span class="icon">🔒</span>
+            <h2>Privacy</h2>
+        </div>
+        
+        <div class="toggle-group">
+            <div class="toggle-info">
+                <div class="toggle-label">Enable Analytics</div>
+                <div class="toggle-description">Help improve the extension by sending anonymous usage data. No personal information or code is ever collected.</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="enableTelemetry">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         
@@ -709,6 +775,7 @@ export class SettingsPanel {
             useAI: document.getElementById('useAI'),
             generateDescription: document.getElementById('generateDescription'),
             autoAcceptAI: document.getElementById('autoAcceptAI'),
+            enableTelemetry: document.getElementById('enableTelemetry'),
             azureStatus: document.getElementById('azure-status'),
             claudeStatus: document.getElementById('claude-status'),
             azureTestResult: document.getElementById('azureTestResult'),
@@ -776,7 +843,7 @@ export class SettingsPanel {
         });
         
         // Toggle handlers
-        ['useAI', 'generateDescription', 'autoAcceptAI'].forEach(id => {
+        ['useAI', 'generateDescription', 'autoAcceptAI', 'enableTelemetry'].forEach(id => {
             document.getElementById(id).addEventListener('change', (e) => {
                 vscode.postMessage({ command: 'saveConfig', key: id, value: e.target.checked });
                 showToast('Setting updated');
@@ -835,6 +902,7 @@ export class SettingsPanel {
                     elements.useAI.checked = s.useAI !== false;
                     elements.generateDescription.checked = s.generateDescription !== false;
                     elements.autoAcceptAI.checked = s.autoAcceptAI === true;
+                    elements.enableTelemetry.checked = s.enableTelemetry !== false;
                     updateStatus(elements.azureStatus, s.hasAzurePAT);
                     updateStatus(elements.claudeStatus, s.hasClaudeToken);
                     

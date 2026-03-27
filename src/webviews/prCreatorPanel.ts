@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsEvents } from '../analytics';
 import { AzureDevOpsClient } from '../api/azureDevOps';
 import { ClaudeClient } from '../api/claude';
 import { AzurePullRequest, AzureRepository, ExtensionServices } from '../types';
@@ -57,6 +58,9 @@ export class PRCreatorPanel {
         );
 
         PRCreatorPanel.currentPanel = new PRCreatorPanel(panel, services);
+
+        // Track PR creator panel opened
+        services.analytics.track(AnalyticsEvents.PR_CREATOR_OPENED);
     }
 
     private dispose(): void {
@@ -93,6 +97,9 @@ export class PRCreatorPanel {
                     case 'copyUrl':
                         await vscode.env.clipboard.writeText(message.url);
                         vscode.window.showInformationMessage('PR URL copied to clipboard');
+                        this.services.analytics.track(AnalyticsEvents.PR_URL_COPIED, {
+                            source: 'panel',
+                        });
                         break;
                     case 'openUrl':
                         vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -178,6 +185,11 @@ export class PRCreatorPanel {
                     selectedRepoId,
                 }
             });
+
+            // Track repositories loaded
+            this.services.analytics.track(AnalyticsEvents.REPOSITORIES_LOADED, {
+                count: this.repositories.length,
+            });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.postMessage({ command: 'error', message: `Failed to load repositories: ${message}` });
@@ -222,9 +234,33 @@ export class PRCreatorPanel {
                     error: titleResult.error,
                 }
             });
+
+            // Track AI generation success
+            if (titleResult.title && !titleResult.error) {
+                this.services.analytics.track(AnalyticsEvents.AI_TITLE_GENERATED, {
+                    model: claudeModel,
+                    has_custom_prompt: false,
+                    has_diff: false,
+                });
+            } else if (titleResult.error) {
+                this.services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+                    error_type: titleResult.error,
+                });
+            }
+
+            if (generateDescription && description) {
+                this.services.analytics.track(AnalyticsEvents.AI_DESCRIPTION_GENERATED, {
+                    model: claudeModel,
+                });
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.postMessage({ command: 'aiGenerated', data: { error: message } });
+            
+            // Track AI generation failure
+            this.services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+                error_type: message,
+            });
         }
     }
 
@@ -298,9 +334,29 @@ export class PRCreatorPanel {
             });
 
             vscode.window.showInformationMessage(`PR #${pr.pullRequestId} created successfully!`);
+
+            // Track PR creation success
+            this.services.analytics.track(AnalyticsEvents.PR_CREATED, {
+                has_ai_title: false,
+                has_ai_description: !!data.description,
+                work_items_count: linkedWorkItems.length,
+                repository: repo?.name,
+            });
+
+            // Track work items linked if any
+            if (linkedWorkItems.length > 0) {
+                this.services.analytics.track(AnalyticsEvents.WORK_ITEM_LINKED, {
+                    count: linkedWorkItems.length,
+                });
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.postMessage({ command: 'prCreateError', message });
+
+            // Track PR creation failure
+            this.services.analytics.track(AnalyticsEvents.PR_CREATION_FAILED, {
+                error_type: message,
+            });
         }
     }
 

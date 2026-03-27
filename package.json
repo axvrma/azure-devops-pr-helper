@@ -1,9 +1,23 @@
 {
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
-    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation",
+    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Claude",
     "publisher": "mrcreatist",
     "version": "0.2.0",
+    "license": "MIT",
+    "icon": "images/icon.png",
+    "galleryBanner": {
+        "color": "#0078d4",
+        "theme": "dark"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/mrcreatist/azure-devops-pr-helper"
+    },
+    "bugs": {
+        "url": "https://github.com/mrcreatist/azure-devops-pr-helper/issues"
+    },
+    "homepage": "https://github.com/mrcreatist/azure-devops-pr-helper#readme",
     "engines": {
         "vscode": "^1.60.0"
     },
@@ -16,7 +30,10 @@
         "pull request",
         "pr",
         "claude",
-        "ai"
+        "ai",
+        "git",
+        "devops",
+        "automation"
     ],
     "activationEvents": [
         "onCommand:extension.raisePR",
@@ -43,7 +60,8 @@
         "vscode-test": "^1.6.1"
     },
     "dependencies": {
-        "axios": "^1.6.0"
+        "axios": "^1.6.0",
+        "posthog-node": "^3.6.0"
     },
     "main": "./out/extension.js",
     "contributes": {
@@ -160,6 +178,11 @@
                     "type": "string",
                     "default": "7.1",
                     "description": "Azure DevOps REST API version"
+                },
+                "azureDevopsPr.enableTelemetry": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable anonymous usage analytics to help improve the extension"
                 }
             }
         },

@@ -54,6 +54,12 @@ Open the settings panel via Command Palette: `Azure DevOps: Open Settings`
 | Generate Description | Also generate description (not just title) |
 | Auto-Accept AI | Skip confirmation and use AI content directly |
 
+### Privacy Settings
+
+| Setting | Description |
+|---------|-------------|
+| Enable Analytics | Send anonymous usage data to help improve the extension |
+
 ## Commands
 
 | Command | Description |
@@ -96,6 +102,38 @@ src/
 - Azure DevOps PAT and Claude API key are stored securely using VS Code's SecretStorage API
 - Credentials are never exposed in logs or configuration files
 - CSP headers protect webviews from XSS attacks
+
+## Analytics & Privacy
+
+This extension collects anonymous usage analytics to help improve the product. We use [PostHog](https://posthog.com) for analytics.
+
+### What We Track
+
+| Event | Description |
+|-------|-------------|
+| Extension activated | When the extension starts |
+| PR created/failed | Success and failure rates for PR creation |
+| AI generation used | When AI title/description generation is used |
+| Settings changed | Which settings are being configured |
+| Connection tests | Success/failure of Azure DevOps and Claude connections |
+
+### What We DON'T Track
+
+- **No personal information** - We never collect names, emails, or identifiable data
+- **No code or content** - We never see your PR titles, descriptions, branch names, or code
+- **No repository data** - We don't collect repository names or project details
+- **No credentials** - Your PAT and API keys are never transmitted
+
+### Privacy Controls
+
+Analytics respects your preferences:
+
+1. **VS Code Telemetry Setting** - If you've disabled telemetry in VS Code settings, we won't collect any data
+2. **Extension Setting** - You can disable analytics specifically for this extension in Settings → Privacy → Enable Analytics
+
+### Anonymous User ID
+
+We use VS Code's built-in `machineId` (already anonymized by VS Code) to count unique users. This ID cannot be traced back to you.
 
 ## Requirements
 

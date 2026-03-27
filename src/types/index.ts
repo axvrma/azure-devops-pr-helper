@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsService } from '../analytics';
 
 // Azure DevOps API Types
 export interface AzureRepository {
@@ -147,11 +148,20 @@ export interface SettingsData {
     apiVersion: string;
     hasAzurePAT: boolean;
     hasClaudeToken: boolean;
+    enableTelemetry: boolean;
+}
+
+// Analytics Event Type
+export interface AnalyticsEvent {
+    event: string;
+    properties?: Record<string, unknown>;
+    timestamp?: Date;
 }
 
 // Extension Context Wrapper for dependency injection
 export interface ExtensionServices {
     context: vscode.ExtensionContext;
+    analytics: AnalyticsService;
     getSecret: (key: string) => Promise<string | undefined>;
     setSecret: (key: string, value: string) => Promise<void>;
     deleteSecret: (key: string) => Promise<void>;

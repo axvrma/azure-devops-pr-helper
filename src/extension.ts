@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsEvents, AnalyticsService } from './analytics';
 import {
     clearPATCommand,
     copyPrUrlCommand,
@@ -15,6 +16,12 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
         // Create services wrapper for dependency injection
         const services = createExtensionServices(context);
+
+        // Track extension activation
+        services.analytics.track(AnalyticsEvents.EXTENSION_ACTIVATED, {
+            version: context.extension.packageJSON.version,
+            vscode_version: vscode.version,
+        });
 
         // Restore last PR URL from state
         const lastPrUrl = services.getState<string>(STATE_KEYS.LAST_PR_URL);
@@ -82,6 +89,9 @@ function registerCommands(
     );
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
     console.log('Azure DevOps PR Helper extension deactivated');
+    
+    // Flush any pending analytics events and shutdown
+    await AnalyticsService.shutdown();
 }

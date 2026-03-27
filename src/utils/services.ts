@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsService } from '../analytics';
 import { ExtensionServices } from '../types';
 import { CONFIG_NAMESPACE } from './constants';
 
@@ -6,8 +7,11 @@ import { CONFIG_NAMESPACE } from './constants';
  * Create extension services wrapper for dependency injection
  */
 export function createExtensionServices(context: vscode.ExtensionContext): ExtensionServices {
+    const analytics = AnalyticsService.initialize(context);
+
     return {
         context,
+        analytics,
 
         async getSecret(key: string): Promise<string | undefined> {
             return context.secrets.get(key);

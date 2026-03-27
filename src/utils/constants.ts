@@ -4,6 +4,12 @@ export const SECRET_KEYS = {
     CLAUDE_TOKEN: 'claudeToken',
 } as const;
 
+// Analytics configuration
+export const ANALYTICS = {
+    POSTHOG_API_KEY: 'phc_8DMji1fYo9QbPuzVIw4Ssi2bfDyd4egdrI7o7zGjXV6', // Replace with your PostHog project API key
+    POSTHOG_HOST: 'https://us.i.posthog.com',
+} as const;
+
 // Global state keys
 export const STATE_KEYS = {
     LAST_PR_URL: 'lastPrUrl',
@@ -20,6 +26,7 @@ export const CONFIG_KEYS = {
     CLAUDE_MAX_TOKENS: 'claudeMaxTokens',
     CLAUDE_TEMPERATURE: 'claudeTemperature',
     API_VERSION: 'apiVersion',
+    ENABLE_TELEMETRY: 'enableTelemetry',
 } as const;
 
 // Configuration namespace
@@ -36,6 +43,7 @@ export const DEFAULT_CONFIG = {
     claudeMaxTokens: 1024,
     claudeTemperature: 0.3,
     apiVersion: '7.1',
+    enableTelemetry: true,
 } as const;
 
 // Claude API configuration

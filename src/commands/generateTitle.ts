@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AnalyticsEvents } from '../analytics';
 import { ClaudeClient } from '../api/claude';
 import { ClaudeGenerationResult, ExtensionServices } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS } from '../utils/constants';
@@ -85,10 +86,31 @@ Repository: ${repo}`;
     }
 
     try {
-        return await claudeClient.generate(prompt);
+        const result = await claudeClient.generate(prompt);
+        
+        // Track AI generation success
+        if (result.title && !result.error) {
+            services.analytics.track(AnalyticsEvents.AI_TITLE_GENERATED, {
+                model: claudeModel,
+                has_custom_prompt: !!args?.prompt,
+                has_diff: !!args?.diff,
+            });
+        } else if (result.error) {
+            services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+                error_type: result.error,
+            });
+        }
+        
+        return result;
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error('Claude generation error:', err);
+        
+        // Track AI generation failure
+        services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+            error_type: message,
+        });
+        
         return { error: message };
     }
 }
