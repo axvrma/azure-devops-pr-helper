@@ -1,83 +1,105 @@
 {
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
+    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation",
     "publisher": "mrcreatist",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "engines": {
         "vscode": "^1.60.0"
     },
+    "categories": [
+        "Other",
+        "SCM Providers"
+    ],
+    "keywords": [
+        "azure devops",
+        "pull request",
+        "pr",
+        "claude",
+        "ai"
+    ],
     "activationEvents": [
         "onCommand:extension.raisePR",
+        "onCommand:extension.openPRCreator",
         "onCommand:extension.copyPrUrl",
         "onCommand:extension.clearPAT",
-        "onCommand:extension.openClaudeSettings",
+        "onCommand:extension.openSettings",
         "onCommand:extension.generateClaudeTitle",
-        "onCommand:extension.openClaudeSidebarSettings",
         "onView:claudeSidebarView"
     ],
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./"
+        "watch": "tsc -watch -p ./",
+        "lint": "eslint src --ext ts"
     },
     "devDependencies": {
-        "@types/node": "^24.0.4",
-        "@types/vscode": "^1.101.0",
-        "typescript": "^4.5.4",
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.60.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "eslint": "^8.0.0",
+        "typescript": "^5.0.0",
         "vscode-test": "^1.6.1"
     },
     "dependencies": {
-        "axios": "^0.27.2"
+        "axios": "^1.6.0"
     },
     "main": "./out/extension.js",
     "contributes": {
         "commands": [
             {
+                "command": "extension.openPRCreator",
+                "title": "Create Pull Request",
+                "category": "Azure DevOps",
+                "icon": "$(git-pull-request)"
+            },
+            {
                 "command": "extension.raisePR",
-                "title": "Raise PR (Azure DevOps)",
-                "category": "Azure DevOps"
+                "title": "Raise PR",
+                "category": "Azure DevOps",
+                "icon": "$(git-pull-request)"
             },
             {
                 "command": "extension.copyPrUrl",
                 "title": "Copy Last PR URL",
-                "category": "Azure DevOps"
+                "category": "Azure DevOps",
+                "icon": "$(copy)"
             },
             {
                 "command": "extension.clearPAT",
                 "title": "Clear Azure DevOps PAT",
-                "category": "Azure DevOps"
+                "category": "Azure DevOps",
+                "icon": "$(trash)"
             },
             {
-                "command": "extension.openClaudeSettings",
-                "title": "Open Claude & DevOps Settings",
-                "category": "Azure DevOps"
+                "command": "extension.openSettings",
+                "title": "Open Settings",
+                "category": "Azure DevOps",
+                "icon": "$(gear)"
             },
             {
                 "command": "extension.generateClaudeTitle",
-                "title": "Generate Claude PR Title",
-                "category": "Azure DevOps"
-            },
-            {
-                "command": "extension.openClaudeSidebarSettings",
-                "title": "Open Claude Sidebar Settings",
-                "category": "Azure DevOps"
+                "title": "Generate PR Title with Claude",
+                "category": "Azure DevOps",
+                "icon": "$(sparkle)"
             }
         ],
         "viewsContainers": {
             "activitybar": [
                 {
                     "id": "azureDevopsPr",
-                    "title": "DevOps PR",
-                    "icon": "resources/icon.png"
+                    "title": "Azure DevOps PR",
+                    "icon": "$(git-pull-request)"
                 }
             ]
         },
         "views": {
             "azureDevopsPr": [
                 {
-                    "icon": "resources/icon.png",
+                    "type": "webview",
                     "id": "claudeSidebarView",
-                    "name": "Claude Title Generator"
+                    "name": "PR Helper"
                 }
             ]
         },
@@ -86,30 +108,97 @@
             "properties": {
                 "azureDevopsPr.orgHost": {
                     "type": "string",
-                    "default": "https://dpwhotfsonline.visualstudio.com",
-                    "description": "Default Azure DevOps organization URL (Host)."
+                    "default": "https://dev.azure.com/your-org",
+                    "description": "Azure DevOps organization URL (e.g., https://dev.azure.com/your-org or https://your-org.visualstudio.com)"
                 },
                 "azureDevopsPr.project": {
                     "type": "string",
-                    "default": "DTLP",
-                    "description": "Default Azure DevOps project name."
+                    "default": "your-project",
+                    "description": "Azure DevOps project name"
                 },
                 "azureDevopsPr.useAI": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Use Claude AI to suggest PR title and description when creating a PR."
+                    "description": "Use Claude AI to generate PR title and description suggestions"
                 },
                 "azureDevopsPr.generateDescription": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When using AI, automatically generate a PR description as well as the title."
+                    "description": "Also generate PR description when using AI"
                 },
                 "azureDevopsPr.autoAcceptAI": {
                     "type": "boolean",
                     "default": false,
-                    "description": "If true, automatically accept Claude-generated title/description without prompting the user."
+                    "description": "Automatically accept AI-generated title and description without prompting"
+                },
+                "azureDevopsPr.claudeModel": {
+                    "type": "string",
+                    "default": "claude-sonnet-4-5",
+                    "enum": [
+                        "claude-sonnet-4-5",
+                        "claude-3-5-sonnet-20241022",
+                        "claude-3-opus-20240229",
+                        "claude-3-haiku-20240307"
+                    ],
+                    "description": "Claude model to use for AI generation"
+                },
+                "azureDevopsPr.claudeMaxTokens": {
+                    "type": "number",
+                    "default": 1024,
+                    "minimum": 100,
+                    "maximum": 4096,
+                    "description": "Maximum tokens for Claude API responses"
+                },
+                "azureDevopsPr.claudeTemperature": {
+                    "type": "number",
+                    "default": 0.3,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Temperature for Claude API (0 = focused, 1 = creative)"
+                },
+                "azureDevopsPr.apiVersion": {
+                    "type": "string",
+                    "default": "7.1",
+                    "description": "Azure DevOps REST API version"
                 }
             }
+        },
+        "menus": {
+            "commandPalette": [
+                {
+                    "command": "extension.openPRCreator",
+                    "when": "workspaceFolderCount > 0"
+                },
+                {
+                    "command": "extension.raisePR",
+                    "when": "workspaceFolderCount > 0"
+                },
+                {
+                    "command": "extension.copyPrUrl"
+                },
+                {
+                    "command": "extension.clearPAT"
+                },
+                {
+                    "command": "extension.openSettings"
+                },
+                {
+                    "command": "extension.generateClaudeTitle",
+                    "when": "workspaceFolderCount > 0"
+                }
+            ],
+            "view/title": [
+                {
+                    "command": "extension.openPRCreator",
+                    "when": "view == claudeSidebarView",
+                    "group": "navigation"
+                },
+                {
+                    "command": "extension.openSettings",
+                    "when": "view == claudeSidebarView",
+                    "group": "navigation"
+                }
+            ]
         }
     }
 }

@@ -1,80 +1,110 @@
-Here's a `README.md` file tailored for your VS Code extension that raises Pull Requests on Azure DevOps and optionally links them to Work Items.
+# Azure DevOps PR Helper
 
----
-
-````markdown
-# VS Code Azure DevOps PR Helper
-
-A simple VS Code extension to streamline the process of creating Pull Requests on **Azure DevOps**. It allows you to:
-- Create a PR with title and description
-- Choose source and target branches
-- Link work items to the PR
-- Automatically copy the PR URL to clipboard
+A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI-powered title and description generation using Claude.
 
 ## Features
 
-- 🔒 Securely stores your Azure DevOps Personal Access Token (PAT) using VS Code Secrets
-- 🧠 Auto-detects the current Git repository and branch
-- 🧭 Supports selecting repositories from your Azure DevOps organization
-- 🧾 Optional linking of work items to PR
-- 📋 Quick copy of last PR URL
+- **Create PRs directly from VS Code** - No need to switch to the browser
+- **AI-Powered Suggestions** - Claude generates PR titles and descriptions based on your branch name
+- **Work Item Linking** - Link PRs to Azure DevOps work items
+- **Secure Credential Storage** - PAT and API keys stored using VS Code SecretStorage
+- **Auto-Detection** - Automatically detects current branch and repository
+- **Comprehensive Settings** - All configuration in one place
 
-## Requirements
+## Installation
 
-- A Git repository connected to an Azure DevOps remote
-- Azure DevOps PAT with `Code (read & write)` and `Work Items (read & write)` permissions
-- `org-config.ts` file exporting `orgHost` and `project` fields
-
-## Getting Started
-
-1. Clone this repo or copy the code into your extension folder
+1. Clone this repository
 2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Compile:
+   ```bash
+   npm run compile
+   ```
+4. Press F5 to launch the Extension Development Host
 
-```bash
-npm install
-````
+## Configuration
 
-3. Create an `org-config.ts` file at the root with the following format:
+Open the settings panel via Command Palette: `Azure DevOps: Open Settings`
 
-```ts
-export const orgConfig = {
-  orgHost: 'https://dev.azure.com/your-org',
-  project: 'your-project-name'
-};
-```
+### Azure DevOps Settings
 
-4. Compile the extension and run in VS Code Extension Host.
+| Setting | Description |
+|---------|-------------|
+| Organization URL | Your Azure DevOps org URL (e.g., `https://dev.azure.com/your-org`) |
+| Project | Project name containing your repositories |
+| PAT | Personal Access Token with Code and Work Items permissions |
+| API Version | Azure DevOps REST API version (default: 7.1) |
+
+### Claude AI Settings
+
+| Setting | Description |
+|---------|-------------|
+| API Key | Your Anthropic API key from console.anthropic.com |
+| Model | Claude model to use (default: claude-sonnet-4-5) |
+| Max Tokens | Maximum response length (default: 1024) |
+| Temperature | Creativity level 0-1 (default: 0.3) |
+
+### AI Behavior Toggles
+
+| Setting | Description |
+|---------|-------------|
+| Enable AI Suggestions | Use Claude to generate PR titles/descriptions |
+| Generate Description | Also generate description (not just title) |
+| Auto-Accept AI | Skip confirmation and use AI content directly |
 
 ## Commands
 
-### 🔧 `Raise PR` (Command: `extension.raisePR`)
+| Command | Description |
+|---------|-------------|
+| `Azure DevOps: Raise PR` | Create a new pull request |
+| `Azure DevOps: Copy Last PR URL` | Copy the last created PR URL |
+| `Azure DevOps: Clear Azure DevOps PAT` | Remove stored PAT |
+| `Azure DevOps: Open Settings` | Open the settings panel |
+| `Azure DevOps: Generate PR Title with Claude` | Generate a title using AI |
 
-1. Prompts for Azure DevOps PAT (only once, stored securely)
-2. Detects or asks for the repository
-3. Prompts for source/target branches, title, and description
-4. Creates the PR and optionally links to Work Items
-5. Offers to copy the PR URL
+## Project Structure
 
-### 📎 `Copy Last PR URL` (Command: `extension.copyPrUrl`)
-
-Copies the last successfully created PR URL to your clipboard.
+```
+src/
+├── extension.ts          # Entry point
+├── api/
+│   ├── azureDevOps.ts    # Azure DevOps API client
+│   └── claude.ts         # Claude API client
+├── commands/
+│   ├── raisePR.ts        # PR creation command
+│   ├── copyUrl.ts        # Copy URL command
+│   ├── clearPAT.ts       # Clear credentials command
+│   ├── generateTitle.ts  # AI title generation
+│   └── index.ts          # Command exports
+├── webviews/
+│   ├── settingsPanel.ts  # Settings webview
+│   ├── sidebarProvider.ts # Sidebar webview
+│   └── index.ts          # Webview exports
+├── utils/
+│   ├── constants.ts      # Configuration keys and defaults
+│   ├── git.ts            # Git utilities
+│   ├── helpers.ts        # General utilities
+│   └── services.ts       # Extension services wrapper
+└── types/
+    └── index.ts          # TypeScript interfaces
+```
 
 ## Security
 
-Your PAT is stored securely using the `vscode.SecretStorage` API and is **never exposed**.
+- Azure DevOps PAT and Claude API key are stored securely using VS Code's SecretStorage API
+- Credentials are never exposed in logs or configuration files
+- CSP headers protect webviews from XSS attacks
 
-## Sample Usage
+## Requirements
 
-* Open your working Git repo
-* Run the `Raise PR` command from the Command Palette
-* Fill in the prompts
-* Your PR is created, and a notification will allow you to copy the PR link
-
-## Troubleshooting
-
-* Ensure your repo is connected to Azure DevOps
-* Ensure PAT has the required permissions
-* The extension currently assumes only one workspace folder is open
+- VS Code 1.60.0 or higher
+- Git repository connected to Azure DevOps
+- Azure DevOps PAT with:
+  - Code (Read & Write)
+  - Work Items (Read & Write)
+- Claude API key (optional, for AI features)
 
 ## License
 
