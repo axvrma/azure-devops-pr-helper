@@ -196,7 +196,7 @@ export async function raisePRCommand(services: ExtensionServices): Promise<void>
             () => azureClient.createPullRequest(repoId, {
                 sourceRefName: `refs/heads/${source}`,
                 targetRefName: `refs/heads/${target}`,
-                title,
+                title: title!,
                 description,
             })
         );
