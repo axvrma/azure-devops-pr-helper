@@ -2,7 +2,7 @@
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
     "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Claude",
-    "publisher": "mrcreatist",
+    "publisher": "Abhishek Verma",
     "version": "0.2.0",
     "license": "MIT",
     "icon": "images/icon.png",
@@ -12,12 +12,12 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/mrcreatist/azure-devops-pr-helper"
+        "url": "https://github.com/axvrma/azure-devops-pr-helper"
     },
     "bugs": {
-        "url": "https://github.com/mrcreatist/azure-devops-pr-helper/issues"
+        "url": "https://github.com/axvrma/azure-devops-pr-helper/issues"
     },
-    "homepage": "https://github.com/mrcreatist/azure-devops-pr-helper#readme",
+    "homepage": "https://github.com/axvrma/azure-devops-pr-helper#readme",
     "engines": {
         "vscode": "^1.60.0"
     },
@@ -61,6 +61,7 @@
     },
     "dependencies": {
         "axios": "^1.6.0",
+        "posthog-js": "^1.364.1",
         "posthog-node": "^3.6.0"
     },
     "main": "./out/extension.js",

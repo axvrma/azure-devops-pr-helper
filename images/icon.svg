@@ -1,40 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0078d4;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#005a9e;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="prGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#e6e6e6;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  
-  <!-- Background rounded square -->
-  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#bgGradient)"/>
-  
-  <!-- Git branch lines -->
-  <g stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round">
-    <!-- Main branch (vertical) -->
-    <line x1="44" y1="30" x2="44" y2="98"/>
-    
-    <!-- Feature branch -->
-    <path d="M 44 50 Q 64 50 74 65 Q 84 80 84 98"/>
-    
-    <!-- Merge arrow -->
-    <path d="M 74 75 L 54 85 L 54 75"/>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="28" fill="#2563EB"/>
+  <g>
+    <!-- PR branch -->
+    <circle cx="40" cy="40" r="12" fill="#fff"/>
+    <circle cx="40" cy="88" r="12" fill="#fff"/>
+    <circle cx="88" cy="64" r="12" fill="#fff"/>
+    <path d="M40 52V76C40 80 44 84 48 84H76" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 52V76C40 80 44 84 48 84H76" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/>
+    <path d="M40 40C40 64 88 64 88 64" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 40C40 64 88 64 88 64" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/>
   </g>
-  
-  <!-- Branch nodes -->
-  <circle cx="44" cy="30" r="8" fill="#ffffff"/>
-  <circle cx="44" cy="98" r="8" fill="#ffffff"/>
-  <circle cx="84" cy="98" r="8" fill="#ffffff"/>
-  
-  <!-- PR merge indicator -->
-  <circle cx="44" cy="65" r="6" fill="#50e3c2"/>
-  
-  <!-- AI sparkle -->
-  <g fill="#ffd700" transform="translate(90, 25)">
-    <polygon points="10,0 12,7 20,7 14,12 16,20 10,15 4,20 6,12 0,7 8,7"/>
+  <!-- Rocket/star accent -->
+  <g>
+    <polygon points="100,28 104,40 116,40 106,48 110,60 100,52 90,60 94,48 84,40 96,40" fill="#fff"/>
+    <polygon points="100,32 103,40 112,40 105,46 108,54 100,48 92,54 95,46 88,40 97,40" fill="#2563EB"/>
   </g>
 </svg>
