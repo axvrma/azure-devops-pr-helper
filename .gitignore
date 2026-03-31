@@ -1,3 +1,4 @@
 out
 node_modules
 org-config.ts
+azure-devops-pr-helper-*.vsix

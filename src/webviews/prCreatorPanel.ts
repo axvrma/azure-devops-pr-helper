@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import { AzureDevOpsClient } from '../api/azureDevOps';
 import { ClaudeClient } from '../api/claude';
-import { AzurePullRequest, AzureRepository, ExtensionServices } from '../types';
+import { AzureRepository, ExtensionServices } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
 import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
 import { getNonce, parseWorkItemIds } from '../utils/helpers';

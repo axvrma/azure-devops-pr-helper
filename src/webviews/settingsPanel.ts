@@ -214,6 +214,7 @@ export class SettingsPanel {
 
     private getHtml(): string {
         const nonce = getNonce();
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const cspSource = this.panel.webview.cspSource;
 
         return /* html */ `

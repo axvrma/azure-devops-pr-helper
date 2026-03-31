@@ -12,7 +12,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         _context: vscode.WebviewViewResolveContext,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         _token: vscode.CancellationToken
     ): void {
         this.view = webviewView;
@@ -28,7 +30,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private setupMessageHandler(webviewView: vscode.WebviewView): void {
         webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
             switch (message.command) {
-                case 'generateTitle':
+                case 'generateTitle': {
                     // Get git diff for context
                     const targetBranch = (message as { targetBranch?: string }).targetBranch;
                     const diff = getGitDiff(targetBranch);
@@ -45,8 +47,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     );
                     webviewView.webview.postMessage({ command: 'titleResult', result });
                     break;
+                }
 
-                case 'getContext':
+                case 'getContext': {
                     const hasAzure = !!(await this.services.getSecret(SECRET_KEYS.AZURE_PAT));
                     const hasClaude = !!(await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN));
                     const branch = getCurrentBranch() ?? '';
@@ -57,6 +60,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                         data: { hasAzure, hasClaude, branch, repo, lastPrUrl }
                     });
                     break;
+                }
 
                 case 'openSettings':
                     vscode.commands.executeCommand(COMMANDS.OPEN_SETTINGS);
@@ -77,6 +81,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
 

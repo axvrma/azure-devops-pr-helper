@@ -2,8 +2,8 @@
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
     "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Claude",
-    "publisher": "Abhishek Verma",
-    "version": "1.0.0",
+    "publisher": "axvrma",
+    "version": "1.0.1",
     "license": "MIT",
     "icon": "images/icon.png",
     "galleryBanner": {

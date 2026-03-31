@@ -52,7 +52,7 @@ export function getCurrentRepoName(): string | undefined {
         // - git@ssh.dev.azure.com:v3/org/project/repo
         // - https://dev.azure.com/org/project/_git/repo
         // - https://org.visualstudio.com/project/_git/repo
-        const cleanUrl = url.replace(/(^.*[:\/])|(\.git$)/g, '');
+        const cleanUrl = url.replace(/(^.*[:/])|(\.git$)/g, '');
         const parts = cleanUrl.split('/');
         return parts[parts.length - 1] || undefined;
     } catch {
@@ -118,7 +118,9 @@ export function isValidBranchName(branchName: string): boolean {
         /\/$/,           // ends with /
         /\.\./,          // contains ..
         /\/\//,          // contains //
+        // eslint-disable-next-line no-control-regex
         /[\x00-\x1f]/,   // control characters
+        // eslint-disable-next-line no-useless-escape
         /[ ~^:?*\[\\]/,  // special characters
         /@\{/,           // @{
         /\.lock$/,       // ends with .lock

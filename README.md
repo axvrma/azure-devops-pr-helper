@@ -13,16 +13,34 @@ A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI
 
 ## Installation
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Compile:
-   ```bash
-   npm run compile
-   ```
-4. Press F5 to launch the Extension Development Host
+1. Open VS Code and go to the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+2. Search for `Azure DevOps PR Helper` and install it.
+*(Alternatively, install from a `.vsix` file using the "Install from VSIX..." option in the Extensions menu).*
+
+## How to Use
+
+### 1. Initial Setup
+Before creating your first pull request, configure your connection:
+1. Click the **Azure DevOps PR** icon in the VS Code Activity Bar to open the sidebar, or run the command `Azure DevOps: Open Settings`.
+2. Under **Azure DevOps Connection**, enter your Organization URL, Project Name, and a Personal Access Token (PAT). Click **Save**.
+3. *(Optional)* Under **Claude AI Integration**, enter your Anthropic API Key to enable AI-powered PR titles and descriptions.
+
+### 2. Creating a Pull Request
+Once configured, you have two ways to create pull requests:
+
+**Option A: The Sidebar (Quick Action)**
+1. Open the **Azure DevOps PR** view in the Activity Bar.
+2. The extension automatically detects your current branch, repository, and active changes.
+3. If Claude is configured, click **Generate Using AI** to automatically draft a context-aware title and description based on your commits.
+4. Click **Create Pull Request**.
+
+**Option B: The Full Webview (Detailed View)**
+1. Run the command `Azure DevOps: Create Pull Request` from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+2. Select your target branch, adjust the AI-generated description, and manually link Azure DevOps Work Items if needed.
+3. Click **Create** to instantly open the PR on Azure DevOps.
+
+### 3. AI Generation
+When connected to Anthropic, the AI analyzes your `git diff` and local commit history to write a structured, descriptive summary of your changes—saving you the hassle of manually explaining your work!
 
 ## Configuration
 
