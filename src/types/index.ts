@@ -62,29 +62,31 @@ export interface AzureApiError {
     error?: string;
 }
 
-// Claude API Types
-export interface ClaudeMessage {
+// AI Provider Types
+export type AIProvider = 'anthropic' | 'gemini' | 'openai';
+
+export interface AIMessage {
     role: 'user' | 'assistant';
     content: string;
 }
 
-export interface ClaudeRequestPayload {
+export interface AnthropicRequestPayload {
     model: string;
     max_tokens: number;
     temperature: number;
-    messages: ClaudeMessage[];
+    messages: AIMessage[];
 }
 
-export interface ClaudeContentBlock {
+export interface AnthropicContentBlock {
     type: 'text';
     text: string;
 }
 
-export interface ClaudeResponse {
+export interface AnthropicResponse {
     id: string;
     type: string;
     role: string;
-    content: ClaudeContentBlock[];
+    content: AnthropicContentBlock[];
     model: string;
     stop_reason: string;
     usage: {
@@ -93,11 +95,13 @@ export interface ClaudeResponse {
     };
 }
 
-export interface ClaudeGenerationResult {
+export interface AIGenerationResult {
     title?: string;
-    raw?: ClaudeResponse;
+    text?: string;
+    raw?: unknown;
     status?: number;
     error?: string;
+    provider?: AIProvider;
 }
 
 // Extension Configuration Types
@@ -107,15 +111,18 @@ export interface ExtensionConfig {
     useAI: boolean;
     generateDescription: boolean;
     autoAcceptAI: boolean;
-    claudeModel: string;
-    claudeMaxTokens: number;
-    claudeTemperature: number;
+    aiProvider: AIProvider;
+    aiModel: string;
+    aiMaxTokens: number;
+    aiTemperature: number;
     apiVersion: string;
 }
 
 export interface SecretKeys {
     azurePAT: string;
-    claudeToken: string;
+    anthropicApiKey: string;
+    geminiApiKey: string;
+    openaiApiKey: string;
 }
 
 // Extension State
@@ -131,7 +138,7 @@ export interface WebviewMessage {
     prompt?: string;
     branch?: string;
     data?: Record<string, unknown>;
-    result?: ClaudeGenerationResult;
+    result?: AIGenerationResult;
     error?: string;
 }
 
@@ -142,12 +149,13 @@ export interface SettingsData {
     useAI: boolean;
     generateDescription: boolean;
     autoAcceptAI: boolean;
-    claudeModel: string;
-    claudeMaxTokens: number;
-    claudeTemperature: number;
+    aiProvider: AIProvider;
+    aiModel: string;
+    aiMaxTokens: number;
+    aiTemperature: number;
     apiVersion: string;
     hasAzurePAT: boolean;
-    hasClaudeToken: boolean;
+    hasAIKey: boolean;
     enableTelemetry: boolean;
 }
 

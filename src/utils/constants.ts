@@ -1,7 +1,9 @@
 // Secret storage keys
 export const SECRET_KEYS = {
     AZURE_PAT: 'azureDevOpsPAT',
-    CLAUDE_TOKEN: 'claudeToken',
+    ANTHROPIC_API_KEY: 'anthropicApiKey',
+    GEMINI_API_KEY: 'geminiApiKey',
+    OPENAI_API_KEY: 'openaiApiKey',
 } as const;
 
 // Analytics configuration
@@ -22,9 +24,10 @@ export const CONFIG_KEYS = {
     USE_AI: 'useAI',
     GENERATE_DESCRIPTION: 'generateDescription',
     AUTO_ACCEPT_AI: 'autoAcceptAI',
-    CLAUDE_MODEL: 'claudeModel',
-    CLAUDE_MAX_TOKENS: 'claudeMaxTokens',
-    CLAUDE_TEMPERATURE: 'claudeTemperature',
+    AI_PROVIDER: 'aiProvider',
+    AI_MODEL: 'aiModel',
+    AI_MAX_TOKENS: 'aiMaxTokens',
+    AI_TEMPERATURE: 'aiTemperature',
     API_VERSION: 'apiVersion',
     ENABLE_TELEMETRY: 'enableTelemetry',
 } as const;
@@ -39,18 +42,35 @@ export const DEFAULT_CONFIG = {
     useAI: true,
     generateDescription: true,
     autoAcceptAI: false,
-    claudeModel: 'claude-sonnet-4-5',
-    claudeMaxTokens: 1024,
-    claudeTemperature: 0.3,
+    aiProvider: 'anthropic',
+    aiModel: '',
+    aiMaxTokens: 1024,
+    aiTemperature: 0.3,
     apiVersion: '7.1',
     enableTelemetry: true,
 } as const;
 
-// Claude API configuration
-export const CLAUDE_API = {
+// Anthropic API configuration
+export const ANTHROPIC_API = {
     ENDPOINT: 'https://api.anthropic.com/v1/messages',
     VERSION: '2023-06-01',
     TIMEOUT: 20000,
+} as const;
+
+export const OPENAI_API = {
+    ENDPOINT: 'https://api.openai.com/v1/chat/completions',
+    TIMEOUT: 20000,
+} as const;
+
+export const GEMINI_API = {
+    ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models',
+    TIMEOUT: 20000,
+} as const;
+
+export const AI_DEFAULT_MODELS = {
+    anthropic: 'claude-sonnet-4-5',
+    gemini: 'gemini-2.5-flash',
+    openai: 'gpt-4o-mini',
 } as const;
 
 // Command identifiers
@@ -59,10 +79,10 @@ export const COMMANDS = {
     COPY_PR_URL: 'extension.copyPrUrl',
     CLEAR_PAT: 'extension.clearPAT',
     OPEN_SETTINGS: 'extension.openSettings',
-    GENERATE_CLAUDE_TITLE: 'extension.generateClaudeTitle',
+    GENERATE_AI_TITLE: 'extension.generateAITitle',
 } as const;
 
 // View identifiers
 export const VIEWS = {
-    SIDEBAR: 'claudeSidebarView',
+    SIDEBAR: 'prHelperSidebarView',
 } as const;

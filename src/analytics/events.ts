@@ -37,16 +37,19 @@ export interface PRCreationFailedProperties {
 }
 
 export interface AITitleGeneratedProperties {
+    provider?: string;
     model: string;
     has_custom_prompt: boolean;
     has_diff: boolean;
 }
 
 export interface AITitleFailedProperties {
+    provider?: string;
     error_type: string;
 }
 
 export interface AIDescriptionGeneratedProperties {
+    provider?: string;
     model: string;
 }
 
@@ -71,7 +74,7 @@ export interface RepositoriesLoadedProperties {
 }
 
 export interface ConnectionTestedProperties {
-    type: 'azure' | 'claude';
+    type: 'azure' | 'anthropic' | 'gemini' | 'openai';
     success: boolean;
 }
 

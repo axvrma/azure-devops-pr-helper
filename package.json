@@ -1,7 +1,7 @@
 {
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
-    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Claude",
+    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Anthropic, Gemini, or OpenAI",
     "publisher": "axvrma",
     "version": "1.0.2",
     "license": "MIT",
@@ -29,7 +29,9 @@
         "azure devops",
         "pull request",
         "pr",
-        "claude",
+        "anthropic",
+        "gemini",
+        "openai",
         "ai",
         "git",
         "devops",
@@ -41,8 +43,8 @@
         "onCommand:extension.copyPrUrl",
         "onCommand:extension.clearPAT",
         "onCommand:extension.openSettings",
-        "onCommand:extension.generateClaudeTitle",
-        "onView:claudeSidebarView"
+        "onCommand:extension.generateAITitle",
+        "onView:prHelperSidebarView"
     ],
     "scripts": {
         "vscode:prepublish": "npm run compile",
@@ -98,8 +100,8 @@
                 "icon": "$(gear)"
             },
             {
-                "command": "extension.generateClaudeTitle",
-                "title": "Generate PR Title with Claude",
+                "command": "extension.generateAITitle",
+                "title": "Generate PR Title with AI",
                 "category": "Azure DevOps",
                 "icon": "$(sparkle)"
             }
@@ -117,7 +119,7 @@
             "azureDevopsPr": [
                 {
                     "type": "webview",
-                    "id": "claudeSidebarView",
+                    "id": "prHelperSidebarView",
                     "name": "PR Helper"
                 }
             ]
@@ -138,7 +140,7 @@
                 "azureDevopsPr.useAI": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Use Claude AI to generate PR title and description suggestions"
+                    "description": "Use the selected AI provider to generate PR title and description suggestions"
                 },
                 "azureDevopsPr.generateDescription": {
                     "type": "boolean",
@@ -150,30 +152,39 @@
                     "default": false,
                     "description": "Automatically accept AI-generated title and description without prompting"
                 },
-                "azureDevopsPr.claudeModel": {
+                "azureDevopsPr.aiProvider": {
                     "type": "string",
-                    "default": "claude-sonnet-4-5",
+                    "default": "anthropic",
                     "enum": [
-                        "claude-sonnet-4-5",
-                        "claude-3-5-sonnet-20241022",
-                        "claude-3-opus-20240229",
-                        "claude-3-haiku-20240307"
+                        "anthropic",
+                        "gemini",
+                        "openai"
                     ],
-                    "description": "Claude model to use for AI generation"
+                    "enumDescriptions": [
+                        "Anthropic",
+                        "Google Gemini",
+                        "OpenAI"
+                    ],
+                    "description": "AI provider to use for PR title and description generation"
                 },
-                "azureDevopsPr.claudeMaxTokens": {
+                "azureDevopsPr.aiModel": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Model id for the selected AI provider. Leave blank to use the provider default."
+                },
+                "azureDevopsPr.aiMaxTokens": {
                     "type": "number",
                     "default": 1024,
                     "minimum": 100,
                     "maximum": 4096,
-                    "description": "Maximum tokens for Claude API responses"
+                    "description": "Maximum tokens for AI provider responses"
                 },
-                "azureDevopsPr.claudeTemperature": {
+                "azureDevopsPr.aiTemperature": {
                     "type": "number",
                     "default": 0.3,
                     "minimum": 0,
-                    "maximum": 1,
-                    "description": "Temperature for Claude API (0 = focused, 1 = creative)"
+                    "maximum": 2,
+                    "description": "Temperature for AI generation"
                 },
                 "azureDevopsPr.apiVersion": {
                     "type": "string",
@@ -207,19 +218,19 @@
                     "command": "extension.openSettings"
                 },
                 {
-                    "command": "extension.generateClaudeTitle",
+                    "command": "extension.generateAITitle",
                     "when": "workspaceFolderCount > 0"
                 }
             ],
             "view/title": [
                 {
                     "command": "extension.openPRCreator",
-                    "when": "view == claudeSidebarView",
+                    "when": "view == prHelperSidebarView",
                     "group": "navigation"
                 },
                 {
                     "command": "extension.openSettings",
-                    "when": "view == claudeSidebarView",
+                    "when": "view == prHelperSidebarView",
                     "group": "navigation"
                 }
             ]

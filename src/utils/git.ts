@@ -1,14 +1,41 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as vscode from 'vscode';
 
 /**
  * Get the root path of the current workspace
  */
-export function getWorkspaceRoot(): string | undefined {
+export function getWorkspaceRoot(resource?: vscode.Uri): string | undefined {
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    return workspaceFolders && workspaceFolders.length > 0 
-        ? workspaceFolders[0].uri.fsPath 
-        : undefined;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return undefined;
+    }
+
+    const activeResource = resource ?? vscode.window.activeTextEditor?.document.uri;
+    if (activeResource) {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(activeResource);
+        if (workspaceFolder) {
+            return workspaceFolder.uri.fsPath;
+        }
+    }
+
+    return workspaceFolders[0].uri.fsPath;
+}
+
+export function getWorkspaceFolderName(resource?: vscode.Uri): string | undefined {
+    const root = getWorkspaceRoot(resource);
+    if (!root) {
+        return undefined;
+    }
+
+    return vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === root)?.name;
+}
+
+function git(args: string[], cwd: string): string {
+    return execFileSync('git', args, {
+        encoding: 'utf8',
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
 }
 
 /**
@@ -21,11 +48,7 @@ export function getCurrentBranch(): string | undefined {
     }
     
     try {
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', { 
-            encoding: 'utf8', 
-            cwd,
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
+        const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
         return branch || undefined;
     } catch {
         return undefined;
@@ -42,11 +65,7 @@ export function getCurrentRepoName(): string | undefined {
     }
     
     try {
-        const url = execSync('git config --get remote.origin.url', { 
-            encoding: 'utf8', 
-            cwd,
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
+        const url = git(['config', '--get', 'remote.origin.url'], cwd);
         
         // Support formats like:
         // - git@ssh.dev.azure.com:v3/org/project/repo
@@ -70,11 +89,7 @@ export function isGitRepository(): boolean {
     }
     
     try {
-        execSync('git rev-parse --is-inside-work-tree', { 
-            encoding: 'utf8', 
-            cwd,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+        git(['rev-parse', '--is-inside-work-tree'], cwd);
         return true;
     } catch {
         return false;
@@ -91,11 +106,7 @@ export function getRemoteUrl(): string | undefined {
     }
     
     try {
-        return execSync('git config --get remote.origin.url', { 
-            encoding: 'utf8', 
-            cwd,
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim() || undefined;
+        return git(['config', '--get', 'remote.origin.url'], cwd) || undefined;
     } catch {
         return undefined;
     }
@@ -145,20 +156,10 @@ export function getGitDiff(targetBranch?: string): string | undefined {
         // If target branch provided, get diff against it
         if (targetBranch) {
             try {
-                diff = execSync(`git diff ${targetBranch}...HEAD --stat`, {
-                    encoding: 'utf8',
-                    cwd,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    maxBuffer: 1024 * 1024, // 1MB buffer
-                }).trim();
+                diff = git(['diff', `${targetBranch}...HEAD`, '--stat'], cwd);
                 
                 // Also get the actual diff (limited)
-                const fullDiff = execSync(`git diff ${targetBranch}...HEAD`, {
-                    encoding: 'utf8',
-                    cwd,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    maxBuffer: 1024 * 1024,
-                }).trim();
+                const fullDiff = git(['diff', `${targetBranch}...HEAD`], cwd);
                 
                 // Limit diff size to avoid token limits
                 if (fullDiff.length > 0) {
@@ -176,18 +177,10 @@ export function getGitDiff(targetBranch?: string): string | undefined {
         // If no target branch diff, get staged + unstaged changes
         if (!diff) {
             // Get staged changes
-            const staged = execSync('git diff --cached --stat', {
-                encoding: 'utf8',
-                cwd,
-                stdio: ['pipe', 'pipe', 'pipe'],
-            }).trim();
+            const staged = git(['diff', '--cached', '--stat'], cwd);
             
             // Get unstaged changes
-            const unstaged = execSync('git diff --stat', {
-                encoding: 'utf8',
-                cwd,
-                stdio: ['pipe', 'pipe', 'pipe'],
-            }).trim();
+            const unstaged = git(['diff', '--stat'], cwd);
             
             if (staged) {
                 diff += 'Staged changes:\n' + staged + '\n\n';
@@ -198,12 +191,7 @@ export function getGitDiff(targetBranch?: string): string | undefined {
             
             // Get actual diff content (limited)
             if (staged || unstaged) {
-                const fullDiff = execSync('git diff HEAD', {
-                    encoding: 'utf8',
-                    cwd,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    maxBuffer: 1024 * 1024,
-                }).trim();
+                const fullDiff = git(['diff', 'HEAD'], cwd);
                 
                 if (fullDiff.length > 0) {
                     diff += '\n\n--- Diff Preview ---\n';
@@ -232,11 +220,7 @@ export function getCommitMessages(targetBranch?: string): string | undefined {
     
     try {
         const target = targetBranch || 'main';
-        const messages = execSync(`git log ${target}..HEAD --oneline --no-decorate`, {
-            encoding: 'utf8',
-            cwd,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
+        const messages = git(['log', `${target}..HEAD`, '--oneline', '--no-decorate'], cwd);
         
         return messages || undefined;
     } catch {

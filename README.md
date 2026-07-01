@@ -1,14 +1,14 @@
 # Azure DevOps PR Helper
 
-A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI-powered title and description generation using Claude.
+A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI-powered title and description generation using Anthropic, Google Gemini, or OpenAI.
 
 ## Features
 
 - **Create PRs directly from VS Code** - No need to switch to the browser
-- **AI-Powered Suggestions** - Claude generates PR titles and descriptions based on your branch name
+- **AI-Powered Suggestions** - Anthropic, Gemini, or OpenAI generates PR titles and descriptions from branch, commit, and diff context
 - **Work Item Linking** - Link PRs to Azure DevOps work items
 - **Secure Credential Storage** - PAT and API keys stored using VS Code SecretStorage
-- **Auto-Detection** - Automatically detects current branch and repository
+- **Workspace-Aware Auto-Detection** - Automatically detects the branch and repository from the active VS Code workspace folder
 - **Comprehensive Settings** - All configuration in one place
 
 ## Installation
@@ -23,7 +23,7 @@ A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI
 Before creating your first pull request, configure your connection:
 1. Click the **Azure DevOps PR** icon in the VS Code Activity Bar to open the sidebar, or run the command `Azure DevOps: Open Settings`.
 2. Under **Azure DevOps Connection**, enter your Organization URL, Project Name, and a Personal Access Token (PAT). Click **Save**.
-3. *(Optional)* Under **Claude AI Integration**, enter your Anthropic API Key to enable AI-powered PR titles and descriptions.
+3. *(Optional)* Under **AI Provider Integration**, choose Anthropic, Gemini, or OpenAI and enter the provider API key to enable AI-powered PR titles and descriptions.
 
 ### 2. Creating a Pull Request
 Once configured, you have two ways to create pull requests:
@@ -31,7 +31,7 @@ Once configured, you have two ways to create pull requests:
 **Option A: The Sidebar (Quick Action)**
 1. Open the **Azure DevOps PR** view in the Activity Bar.
 2. The extension automatically detects your current branch, repository, and active changes.
-3. If Claude is configured, click **Generate Using AI** to automatically draft a context-aware title and description based on your commits.
+3. If an AI provider is configured, click **Generate Using AI** to draft a context-aware title and description from your commits and diff.
 4. Click **Create Pull Request**.
 
 **Option B: The Full Webview (Detailed View)**
@@ -40,7 +40,7 @@ Once configured, you have two ways to create pull requests:
 3. Click **Create** to instantly open the PR on Azure DevOps.
 
 ### 3. AI Generation
-When connected to Anthropic, the AI analyzes your `git diff` and local commit history to write a structured, descriptive summary of your changes—saving you the hassle of manually explaining your work!
+When an AI provider is configured, the extension can analyze your `git diff` and local commit history to write a structured, descriptive summary of your changes.
 
 ## Configuration
 
@@ -55,20 +55,21 @@ Open the settings panel via Command Palette: `Azure DevOps: Open Settings`
 | PAT | Personal Access Token with Code and Work Items permissions |
 | API Version | Azure DevOps REST API version (default: 7.1) |
 
-### Claude AI Settings
+### AI Provider Settings
 
 | Setting | Description |
 |---------|-------------|
-| API Key | Your Anthropic API key from console.anthropic.com |
-| Model | Claude model to use (default: claude-sonnet-4-5) |
+| Provider | Anthropic, Google Gemini, or OpenAI |
+| API Key | Provider API key stored securely in VS Code SecretStorage |
+| Model | Provider model id. Leave blank in VS Code settings to use the provider default |
 | Max Tokens | Maximum response length (default: 1024) |
-| Temperature | Creativity level 0-1 (default: 0.3) |
+| Temperature | Creativity level 0-2 (default: 0.3) |
 
 ### AI Behavior Toggles
 
 | Setting | Description |
 |---------|-------------|
-| Enable AI Suggestions | Use Claude to generate PR titles/descriptions |
+| Enable AI Suggestions | Use the selected AI provider to generate PR titles/descriptions |
 | Generate Description | Also generate description (not just title) |
 | Auto-Accept AI | Skip confirmation and use AI content directly |
 
@@ -86,7 +87,7 @@ Open the settings panel via Command Palette: `Azure DevOps: Open Settings`
 | `Azure DevOps: Copy Last PR URL` | Copy the last created PR URL |
 | `Azure DevOps: Clear Azure DevOps PAT` | Remove stored PAT |
 | `Azure DevOps: Open Settings` | Open the settings panel |
-| `Azure DevOps: Generate PR Title with Claude` | Generate a title using AI |
+| `Azure DevOps: Generate PR Title with AI` | Generate a title using AI |
 
 ## Project Structure
 
@@ -95,7 +96,7 @@ src/
 ├── extension.ts          # Entry point
 ├── api/
 │   ├── azureDevOps.ts    # Azure DevOps API client
-│   └── claude.ts         # Claude API client
+│   └── ai.ts             # Multi-provider AI client
 ├── commands/
 │   ├── raisePR.ts        # PR creation command
 │   ├── copyUrl.ts        # Copy URL command
@@ -117,7 +118,7 @@ src/
 
 ## Security
 
-- Azure DevOps PAT and Claude API key are stored securely using VS Code's SecretStorage API
+- Azure DevOps PAT and AI provider API keys are stored securely using VS Code's SecretStorage API
 - Credentials are never exposed in logs or configuration files
 - CSP headers protect webviews from XSS attacks
 
@@ -133,7 +134,7 @@ This extension collects anonymous usage analytics to help improve the product. W
 | PR created/failed | Success and failure rates for PR creation |
 | AI generation used | When AI title/description generation is used |
 | Settings changed | Which settings are being configured |
-| Connection tests | Success/failure of Azure DevOps and Claude connections |
+| Connection tests | Success/failure of Azure DevOps and AI provider connections |
 
 ### What We DON'T Track
 
@@ -160,7 +161,7 @@ We use VS Code's built-in `machineId` (already anonymized by VS Code) to count u
 - Azure DevOps PAT with:
   - Code (Read & Write)
   - Work Items (Read & Write)
-- Claude API key (optional, for AI features)
+- Anthropic, Gemini, or OpenAI API key (optional, for AI features)
 
 ## License
 

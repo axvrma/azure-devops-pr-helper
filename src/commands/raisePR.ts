@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { AzureDevOpsClient, pickRepository } from '../api/azureDevOps';
-import { ClaudeClient } from '../api/claude';
+import { createAIClientFromServices, normalizeGeneratedTitle, PRPrompts } from '../api/ai';
 import { ExtensionServices } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
-import { getCurrentBranch, getCurrentRepoName, isValidBranchName } from '../utils/git';
+import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff, isValidBranchName } from '../utils/git';
 import { parseWorkItemIds } from '../utils/helpers';
 
 export async function raisePRCommand(services: ExtensionServices): Promise<void> {
@@ -101,39 +101,31 @@ export async function raisePRCommand(services: ExtensionServices): Promise<void>
     let generatedDescription: string | undefined;
 
     if (useAI) {
-        const claudeToken = await services.getSecret(SECRET_KEYS.CLAUDE_TOKEN);
-        if (claudeToken) {
-            const claudeModel = services.getConfig(CONFIG_KEYS.CLAUDE_MODEL, DEFAULT_CONFIG.claudeModel);
-            const claudeMaxTokens = services.getConfig(CONFIG_KEYS.CLAUDE_MAX_TOKENS, DEFAULT_CONFIG.claudeMaxTokens);
-            const claudeTemperature = services.getConfig(CONFIG_KEYS.CLAUDE_TEMPERATURE, DEFAULT_CONFIG.claudeTemperature);
-
-            const claudeClient = new ClaudeClient({
-                apiKey: claudeToken,
-                model: claudeModel,
-                maxTokens: claudeMaxTokens,
-                temperature: claudeTemperature,
-            });
+        const { client, error } = await createAIClientFromServices(services);
+        if (client) {
 
             const branchName = currentBranch || source;
             const repoName = currentRepoName || 'repository';
+            const commits = getCommitMessages(target);
+            const diff = getGitDiff(target);
 
             try {
                 await vscode.window.withProgress(
                     { location: vscode.ProgressLocation.Notification, title: 'Generating AI suggestions...' },
                     async () => {
                         // Generate title
-                        const titleResult = await claudeClient.generatePRTitle(branchName, repoName);
+                        const titleResult = await client.generate(PRPrompts.title(branchName, repoName, commits, diff));
                         if (titleResult.title && !titleResult.error) {
-                            generatedTitle = titleResult.title;
+                            generatedTitle = normalizeGeneratedTitle(titleResult.title);
                         } else if (titleResult.error) {
                             vscode.window.showWarningMessage(`AI title generation failed: ${titleResult.error}`);
                         }
 
                         // Generate description if enabled
                         if (generateDescription) {
-                            const descResult = await claudeClient.generatePRDescription(branchName, repoName);
-                            if (descResult.title && !descResult.error) {
-                                generatedDescription = descResult.title;
+                            const descResult = await client.generate(PRPrompts.description(branchName, repoName, commits, diff));
+                            if ((descResult.text || descResult.title) && !descResult.error) {
+                                generatedDescription = descResult.text || descResult.title;
                             } else if (descResult.error) {
                                 vscode.window.showWarningMessage(`AI description generation failed: ${descResult.error}`);
                             }
@@ -145,7 +137,7 @@ export async function raisePRCommand(services: ExtensionServices): Promise<void>
                 vscode.window.showWarningMessage('AI generation failed. Proceeding with manual input.');
             }
         } else {
-            vscode.window.showWarningMessage('Claude token not configured. Skipping AI suggestions.');
+            vscode.window.showWarningMessage(`${error ?? 'AI provider API key not configured'}. Skipping AI suggestions.`);
         }
     }
 

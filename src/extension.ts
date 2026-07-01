@@ -3,7 +3,7 @@ import { AnalyticsEvents, AnalyticsService } from './analytics';
 import {
     clearPATCommand,
     copyPrUrlCommand,
-    generateClaudeTitleCommand,
+    generateAITitleCommand,
     GenerateTitleArgs,
 } from './commands';
 import { COMMANDS, STATE_KEYS, VIEWS } from './utils/constants';
@@ -80,13 +80,14 @@ function registerCommands(
         })
     );
 
-    // Generate Claude title command (can be called programmatically)
+    // Generate AI title command (can be called programmatically)
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            COMMANDS.GENERATE_CLAUDE_TITLE,
-            (args?: GenerateTitleArgs) => generateClaudeTitleCommand(services, args)
+            COMMANDS.GENERATE_AI_TITLE,
+            (args?: GenerateTitleArgs) => generateAITitleCommand(services, args)
         )
     );
+
 }
 
 export async function deactivate(): Promise<void> {

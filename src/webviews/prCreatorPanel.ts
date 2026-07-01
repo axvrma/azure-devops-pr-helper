@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import { AzureDevOpsClient } from '../api/azureDevOps';
-import { ClaudeClient } from '../api/claude';
+import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle, PRPrompts } from '../api/ai';
 import { AzureRepository, ExtensionServices } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
-import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
+import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff, isValidBranchName } from '../utils/git';
 import { getNonce, parseWorkItemIds } from '../utils/helpers';
 
 interface PRHistoryItem {
@@ -17,6 +17,16 @@ interface PRHistoryItem {
     repository: string;
     createdAt: string;
     workItems: string[];
+}
+
+interface CreatePullRequestFormData {
+    repositoryId: string;
+    sourceBranch: string;
+    targetBranch: string;
+    title: string;
+    description: string;
+    workItems: string;
+    generatedByAI?: boolean;
 }
 
 const PR_HISTORY_KEY = 'prHistory';
@@ -89,7 +99,7 @@ export class PRCreatorPanel {
                         await this.loadRepositories();
                         break;
                     case 'generateAI':
-                        await this.generateAIContent(message.branch, message.repo);
+                        await this.generateAIContent(message.branch, message.repo, message.targetBranch);
                         break;
                     case 'createPR':
                         await this.createPullRequest(message.data);
@@ -126,7 +136,8 @@ export class PRCreatorPanel {
 
     private async sendInitialData(): Promise<void> {
         const hasAzurePAT = !!(await this.services.getSecret(SECRET_KEYS.AZURE_PAT));
-        const hasClaudeToken = !!(await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN));
+        const { client, provider } = await createAIClientFromServices(this.services);
+        const hasAIKey = !!client;
         const currentBranch = getCurrentBranch() || '';
         const currentRepo = getCurrentRepoName() || '';
         const useAI = this.services.getConfig(CONFIG_KEYS.USE_AI, DEFAULT_CONFIG.useAI);
@@ -137,7 +148,8 @@ export class PRCreatorPanel {
             command: 'initialData',
             data: {
                 hasAzurePAT,
-                hasClaudeToken,
+                hasAIKey,
+                aiProviderLabel: getAIProviderLabel(provider),
                 currentBranch,
                 currentRepo,
                 useAI,
@@ -196,40 +208,35 @@ export class PRCreatorPanel {
         }
     }
 
-    private async generateAIContent(branch: string, repo: string): Promise<void> {
-        const claudeToken = await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN);
-        if (!claudeToken) {
-            this.postMessage({ command: 'aiGenerated', data: { error: 'Claude token not configured' } });
+    private async generateAIContent(branch: string, repo: string, targetBranch?: string): Promise<void> {
+        const { client, provider, model, error } = await createAIClientFromServices(this.services);
+        if (!client) {
+            this.postMessage({ command: 'aiGenerated', data: { error: error ?? 'AI provider API key not configured' } });
             return;
         }
 
-        const claudeModel = this.services.getConfig(CONFIG_KEYS.CLAUDE_MODEL, DEFAULT_CONFIG.claudeModel);
-        const claudeMaxTokens = this.services.getConfig(CONFIG_KEYS.CLAUDE_MAX_TOKENS, DEFAULT_CONFIG.claudeMaxTokens);
-        const claudeTemperature = this.services.getConfig(CONFIG_KEYS.CLAUDE_TEMPERATURE, DEFAULT_CONFIG.claudeTemperature);
         const generateDescription = this.services.getConfig(CONFIG_KEYS.GENERATE_DESCRIPTION, DEFAULT_CONFIG.generateDescription);
+        const branchName = branch?.trim() || getCurrentBranch() || 'feature';
+        const repoName = repo?.trim() || getCurrentRepoName() || 'repository';
+        const target = targetBranch?.trim() || 'main';
+        const commits = getCommitMessages(target);
+        const diff = getGitDiff(target);
 
         try {
-            const client = new ClaudeClient({
-                apiKey: claudeToken,
-                model: claudeModel,
-                maxTokens: claudeMaxTokens,
-                temperature: claudeTemperature,
-            });
-
-            const titleResult = await client.generatePRTitle(branch, repo);
+            const titleResult = await client.generate(PRPrompts.title(branchName, repoName, commits, diff));
             let description = '';
 
             if (generateDescription) {
-                const descResult = await client.generatePRDescription(branch, repo);
-                if (descResult.title && !descResult.error) {
-                    description = descResult.title;
+                const descResult = await client.generate(PRPrompts.description(branchName, repoName, commits, diff));
+                if ((descResult.text || descResult.title) && !descResult.error) {
+                    description = descResult.text || descResult.title || '';
                 }
             }
 
             this.postMessage({
                 command: 'aiGenerated',
                 data: {
-                    title: titleResult.title || '',
+                    title: titleResult.title ? normalizeGeneratedTitle(titleResult.title) : '',
                     description,
                     error: titleResult.error,
                 }
@@ -238,19 +245,22 @@ export class PRCreatorPanel {
             // Track AI generation success
             if (titleResult.title && !titleResult.error) {
                 this.services.analytics.track(AnalyticsEvents.AI_TITLE_GENERATED, {
-                    model: claudeModel,
+                    provider,
+                    model,
                     has_custom_prompt: false,
-                    has_diff: false,
+                    has_diff: !!diff,
                 });
             } else if (titleResult.error) {
                 this.services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+                    provider,
                     error_type: titleResult.error,
                 });
             }
 
             if (generateDescription && description) {
                 this.services.analytics.track(AnalyticsEvents.AI_DESCRIPTION_GENERATED, {
-                    model: claudeModel,
+                    provider,
+                    model,
                 });
             }
         } catch (error) {
@@ -259,19 +269,19 @@ export class PRCreatorPanel {
             
             // Track AI generation failure
             this.services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+                provider,
                 error_type: message,
             });
         }
     }
 
-    private async createPullRequest(data: {
-        repositoryId: string;
-        sourceBranch: string;
-        targetBranch: string;
-        title: string;
-        description: string;
-        workItems: string;
-    }): Promise<void> {
+    private async createPullRequest(data: CreatePullRequestFormData): Promise<void> {
+        const validationError = this.validatePullRequestInput(data);
+        if (validationError) {
+            this.postMessage({ command: 'prCreateError', message: validationError });
+            return;
+        }
+
         const pat = await this.services.getSecret(SECRET_KEYS.AZURE_PAT);
         if (!pat) {
             this.postMessage({ command: 'prCreateError', message: 'Azure PAT not configured' });
@@ -282,21 +292,31 @@ export class PRCreatorPanel {
         const project = this.services.getConfig(CONFIG_KEYS.PROJECT, DEFAULT_CONFIG.project);
         const apiVersion = this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion);
 
+        if (!orgUrl || orgUrl === DEFAULT_CONFIG.orgHost || !project || project === DEFAULT_CONFIG.project) {
+            this.postMessage({ command: 'prCreateError', message: 'Azure DevOps organization and project are not configured' });
+            return;
+        }
+
+        const sourceBranch = data.sourceBranch.trim();
+        const targetBranch = data.targetBranch.trim();
+        const title = data.title.trim();
+        const description = data.description?.trim() || '';
+
         try {
             const client = new AzureDevOpsClient(orgUrl, project, pat, apiVersion);
             
             const pr = await client.createPullRequest(data.repositoryId, {
-                sourceRefName: `refs/heads/${data.sourceBranch}`,
-                targetRefName: `refs/heads/${data.targetBranch}`,
-                title: data.title,
-                description: data.description,
+                sourceRefName: `refs/heads/${sourceBranch}`,
+                targetRefName: `refs/heads/${targetBranch}`,
+                title,
+                description,
             });
 
             const prUrl = client.getPullRequestWebUrl(pr);
             await this.services.setState(STATE_KEYS.LAST_PR_URL, prUrl);
 
             // Link work items
-            const workItemIds = parseWorkItemIds(data.workItems);
+            const workItemIds = parseWorkItemIds(data.workItems || '');
             const linkedWorkItems: string[] = [];
             
             if (workItemIds.length > 0 && pr.artifactId) {
@@ -316,11 +336,11 @@ export class PRCreatorPanel {
             // Save to history
             const historyItem: PRHistoryItem = {
                 id: pr.pullRequestId,
-                title: data.title,
-                description: data.description,
+                title,
+                description,
                 url: prUrl,
-                sourceBranch: data.sourceBranch,
-                targetBranch: data.targetBranch,
+                sourceBranch,
+                targetBranch,
                 repository: repo?.name || 'Unknown',
                 createdAt: new Date().toISOString(),
                 workItems: linkedWorkItems,
@@ -337,8 +357,8 @@ export class PRCreatorPanel {
 
             // Track PR creation success
             this.services.analytics.track(AnalyticsEvents.PR_CREATED, {
-                has_ai_title: false,
-                has_ai_description: !!data.description,
+                has_ai_title: !!data.generatedByAI,
+                has_ai_description: !!data.generatedByAI && !!description,
                 work_items_count: linkedWorkItems.length,
                 repository: repo?.name,
             });
@@ -358,6 +378,46 @@ export class PRCreatorPanel {
                 error_type: message,
             });
         }
+    }
+
+    private validatePullRequestInput(data: CreatePullRequestFormData): string | undefined {
+        if (!data || typeof data !== 'object') {
+            return 'Invalid pull request form data';
+        }
+
+        if (!data.repositoryId?.trim()) {
+            return 'Repository is required';
+        }
+
+        if (!data.sourceBranch?.trim()) {
+            return 'Source branch is required';
+        }
+
+        if (!isValidBranchName(data.sourceBranch.trim())) {
+            return 'Source branch name is invalid';
+        }
+
+        if (!data.targetBranch?.trim()) {
+            return 'Target branch is required';
+        }
+
+        if (!isValidBranchName(data.targetBranch.trim())) {
+            return 'Target branch name is invalid';
+        }
+
+        if (data.sourceBranch.trim() === data.targetBranch.trim()) {
+            return 'Source and target branches must be different';
+        }
+
+        if (!data.title?.trim()) {
+            return 'PR title is required';
+        }
+
+        if (data.title.trim().length > 200) {
+            return 'PR title must be 200 characters or fewer';
+        }
+
+        return undefined;
     }
 
     private async addToPRHistory(item: PRHistoryItem): Promise<void> {
@@ -806,8 +866,8 @@ export class PRCreatorPanel {
                 <span>Azure DevOps</span>
             </div>
             <div class="status-item">
-                <span class="status-dot" id="claudeStatus"></span>
-                <span>Claude AI</span>
+                <span class="status-dot" id="aiStatus"></span>
+                <span id="aiProviderLabel">AI Provider</span>
             </div>
             <div class="status-item" id="branchInfo">
                 <span>📍</span>
@@ -912,7 +972,8 @@ export class PRCreatorPanel {
             settingsBtn: document.getElementById('settingsBtn'),
             clearHistoryBtn: document.getElementById('clearHistoryBtn'),
             azureStatus: document.getElementById('azureStatus'),
-            claudeStatus: document.getElementById('claudeStatus'),
+            aiStatus: document.getElementById('aiStatus'),
+            aiProviderLabel: document.getElementById('aiProviderLabel'),
             currentBranchDisplay: document.getElementById('currentBranchDisplay'),
             errorMessage: document.getElementById('errorMessage'),
             prHistoryList: document.getElementById('prHistoryList'),
@@ -920,6 +981,7 @@ export class PRCreatorPanel {
         
         let isCreating = false;
         let isGenerating = false;
+        let aiGeneratedApplied = false;
         
         // Event Listeners
         elements.settingsBtn.addEventListener('click', () => {
@@ -942,7 +1004,8 @@ export class PRCreatorPanel {
             vscode.postMessage({
                 command: 'generateAI',
                 branch: elements.sourceBranch.value || 'feature',
-                repo: elements.repository.options[elements.repository.selectedIndex]?.text || 'repository'
+                repo: elements.repository.options[elements.repository.selectedIndex]?.text || 'repository',
+                targetBranch: elements.targetBranch.value || 'main'
             });
         });
         
@@ -954,15 +1017,15 @@ export class PRCreatorPanel {
                 showError('Please select a repository');
                 return;
             }
-            if (!elements.sourceBranch.value) {
+            if (!elements.sourceBranch.value.trim()) {
                 showError('Please enter a source branch');
                 return;
             }
-            if (!elements.targetBranch.value) {
+            if (!elements.targetBranch.value.trim()) {
                 showError('Please enter a target branch');
                 return;
             }
-            if (!elements.prTitle.value) {
+            if (!elements.prTitle.value.trim()) {
                 showError('Please enter a PR title');
                 return;
             }
@@ -977,11 +1040,12 @@ export class PRCreatorPanel {
                 command: 'createPR',
                 data: {
                     repositoryId: elements.repository.value,
-                    sourceBranch: elements.sourceBranch.value,
-                    targetBranch: elements.targetBranch.value,
-                    title: elements.prTitle.value,
-                    description: elements.prDescription.value,
-                    workItems: elements.workItems.value,
+                    sourceBranch: elements.sourceBranch.value.trim(),
+                    targetBranch: elements.targetBranch.value.trim(),
+                    title: elements.prTitle.value.trim(),
+                    description: elements.prDescription.value.trim(),
+                    workItems: elements.workItems.value.trim(),
+                    generatedByAI: aiGeneratedApplied,
                 }
             });
         });
@@ -1100,7 +1164,8 @@ export class PRCreatorPanel {
                     
                     // Status indicators
                     elements.azureStatus.className = 'status-dot ' + (data.hasAzurePAT ? 'ok' : 'warning');
-                    elements.claudeStatus.className = 'status-dot ' + (data.hasClaudeToken ? 'ok' : 'warning');
+                    elements.aiStatus.className = 'status-dot ' + (data.hasAIKey ? 'ok' : 'warning');
+                    elements.aiProviderLabel.textContent = data.aiProviderLabel || 'AI Provider';
                     elements.currentBranchDisplay.textContent = data.currentBranch || 'Not detected';
                     
                     // Pre-fill branch
@@ -1135,12 +1200,14 @@ export class PRCreatorPanel {
                     if (msg.data.error) {
                         showError('AI generation failed: ' + msg.data.error);
                     } else {
+                        hideError();
                         if (msg.data.title) {
                             elements.prTitle.value = msg.data.title;
                         }
                         if (msg.data.description) {
                             elements.prDescription.value = msg.data.description;
                         }
+                        aiGeneratedApplied = true;
                     }
                     break;
                     
@@ -1154,6 +1221,7 @@ export class PRCreatorPanel {
                     elements.prTitle.value = '';
                     elements.prDescription.value = '';
                     elements.workItems.value = '';
+                    aiGeneratedApplied = false;
                     
                     // Update history with new PR highlighted
                     const history = [msg.data];

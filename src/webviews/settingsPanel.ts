@@ -1,8 +1,19 @@
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
+import {
+    createAIClientFromServices,
+    getAIProviderLabel,
+    getAISecret,
+    getAISecretKey,
+    getConfiguredAIMaxTokens,
+    getConfiguredAITemperature,
+    getConfiguredAIProvider,
+    getConfiguredAIModel,
+    isAIProvider,
+} from '../api/ai';
 import { ExtensionServices, SettingsData, WebviewMessage } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS } from '../utils/constants';
-import { getNonce } from '../utils/helpers';
+import { getNonce, normalizeBaseUrl } from '../utils/helpers';
 
 export class SettingsPanel {
     public static currentPanel: SettingsPanel | undefined;
@@ -63,19 +74,41 @@ export class SettingsPanel {
                         break;
                     case 'saveSecret':
                         if (message.key && typeof message.value === 'string') {
-                            await this.services.setSecret(message.key, message.value);
+                            if (!this.isKnownSecretKey(message.key)) {
+                                this.postMessage({ command: 'saveError', error: 'Unknown secret key' });
+                                break;
+                            }
+
+                            await this.services.setSecret(message.key, message.value.trim());
                             this.postMessage({ command: 'secretSaved', key: message.key });
                         }
                         break;
                     case 'deleteSecret':
                         if (message.key) {
+                            if (!this.isKnownSecretKey(message.key)) {
+                                this.postMessage({ command: 'saveError', error: 'Unknown secret key' });
+                                break;
+                            }
+
                             await this.services.deleteSecret(message.key);
                             this.postMessage({ command: 'secretDeleted', key: message.key });
                         }
                         break;
+                    case 'deleteAISecret': {
+                        const provider = getConfiguredAIProvider(this.services);
+                        await this.services.deleteSecret(getAISecretKey(provider));
+                        this.postMessage({ command: 'secretDeleted', key: 'aiSecret' });
+                        break;
+                    }
                     case 'saveConfig':
                         if (message.key && message.value !== undefined) {
-                            await this.services.setConfig(message.key, message.value);
+                            const normalized = this.normalizeConfigValue(message.key, message.value);
+                            if (typeof normalized === 'string' && normalized.startsWith('error:')) {
+                                this.postMessage({ command: 'saveError', error: normalized.slice('error:'.length) });
+                                break;
+                            }
+
+                            await this.services.setConfig(message.key, normalized);
                             this.postMessage({ command: 'configSaved', key: message.key });
                             
                             // Track settings saved
@@ -94,8 +127,8 @@ export class SettingsPanel {
                     case 'testConnection':
                         await this.testAzureConnection();
                         break;
-                    case 'testClaude':
-                        await this.testClaudeConnection();
+                    case 'testAI':
+                        await this.testAIConnection();
                         break;
                 }
             },
@@ -108,9 +141,64 @@ export class SettingsPanel {
         this.panel.webview.postMessage(message);
     }
 
+    private isKnownSecretKey(key: string): boolean {
+        return Object.values(SECRET_KEYS).includes(key as typeof SECRET_KEYS[keyof typeof SECRET_KEYS]);
+    }
+
+    private normalizeConfigValue(key: string, value: string | boolean | number): string | boolean | number {
+        switch (key) {
+            case CONFIG_KEYS.ORG_HOST: {
+                const normalized = normalizeBaseUrl(String(value).trim()) || '';
+                if (!/^https?:\/\/[^/]+/.test(normalized)) {
+                    return 'error:Organization URL must start with http:// or https://';
+                }
+                return normalized;
+            }
+            case CONFIG_KEYS.PROJECT: {
+                const project = String(value).trim();
+                return project ? project : 'error:Project name is required';
+            }
+            case CONFIG_KEYS.API_VERSION: {
+                const apiVersion = String(value).trim();
+                return /^\d+(\.\d+)?$/.test(apiVersion) ? apiVersion : 'error:API version must look like 7.1';
+            }
+            case CONFIG_KEYS.AI_PROVIDER:
+                return isAIProvider(value) ? value : 'error:Unknown AI provider';
+            case CONFIG_KEYS.AI_MODEL: {
+                const model = String(value).trim();
+                return model ? model : 'error:Model is required';
+            }
+            case CONFIG_KEYS.AI_MAX_TOKENS: {
+                const maxTokens = Number(value);
+                if (!Number.isInteger(maxTokens) || maxTokens < 100 || maxTokens > 4096) {
+                    return 'error:Max tokens must be an integer from 100 to 4096';
+                }
+                return maxTokens;
+            }
+            case CONFIG_KEYS.AI_TEMPERATURE: {
+                const temperature = Number(value);
+                if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+                    return 'error:Temperature must be between 0 and 2';
+                }
+                return temperature;
+            }
+            case CONFIG_KEYS.USE_AI:
+            case CONFIG_KEYS.GENERATE_DESCRIPTION:
+            case CONFIG_KEYS.AUTO_ACCEPT_AI:
+            case CONFIG_KEYS.ENABLE_TELEMETRY:
+                return Boolean(value);
+            default:
+                return 'error:Unknown configuration key';
+        }
+    }
+
     private async sendSettings(): Promise<void> {
         const hasAzurePAT = !!(await this.services.getSecret(SECRET_KEYS.AZURE_PAT));
-        const hasClaudeToken = !!(await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN));
+        const aiProvider = getConfiguredAIProvider(this.services);
+        const aiModel = getConfiguredAIModel(this.services, aiProvider);
+        const aiMaxTokens = getConfiguredAIMaxTokens(this.services);
+        const aiTemperature = getConfiguredAITemperature(this.services);
+        const hasAIKey = !!(await getAISecret(this.services, aiProvider));
 
         const settings: SettingsData = {
             orgHost: this.services.getConfig(CONFIG_KEYS.ORG_HOST, DEFAULT_CONFIG.orgHost),
@@ -118,12 +206,13 @@ export class SettingsPanel {
             useAI: this.services.getConfig(CONFIG_KEYS.USE_AI, DEFAULT_CONFIG.useAI),
             generateDescription: this.services.getConfig(CONFIG_KEYS.GENERATE_DESCRIPTION, DEFAULT_CONFIG.generateDescription),
             autoAcceptAI: this.services.getConfig(CONFIG_KEYS.AUTO_ACCEPT_AI, DEFAULT_CONFIG.autoAcceptAI),
-            claudeModel: this.services.getConfig(CONFIG_KEYS.CLAUDE_MODEL, DEFAULT_CONFIG.claudeModel),
-            claudeMaxTokens: this.services.getConfig(CONFIG_KEYS.CLAUDE_MAX_TOKENS, DEFAULT_CONFIG.claudeMaxTokens),
-            claudeTemperature: this.services.getConfig(CONFIG_KEYS.CLAUDE_TEMPERATURE, DEFAULT_CONFIG.claudeTemperature),
+            aiProvider,
+            aiModel,
+            aiMaxTokens,
+            aiTemperature,
             apiVersion: this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion),
             hasAzurePAT,
-            hasClaudeToken,
+            hasAIKey,
             enableTelemetry: this.services.getConfig(CONFIG_KEYS.ENABLE_TELEMETRY, DEFAULT_CONFIG.enableTelemetry),
         };
 
@@ -167,46 +256,40 @@ export class SettingsPanel {
         }
     }
 
-    private async testClaudeConnection(): Promise<void> {
-        const token = await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN);
-        if (!token) {
-            this.postMessage({ command: 'testResult', data: { type: 'claude', success: false, message: 'Token not configured' } });
+    private async testAIConnection(): Promise<void> {
+        const { client, provider, error } = await createAIClientFromServices(this.services);
+        const type = 'ai';
+        if (!client) {
+            this.postMessage({ command: 'testResult', data: { type, success: false, message: error ?? 'API key not configured' } });
             return;
         }
 
         try {
-            const { ClaudeClient } = await import('../api/claude');
-            const client = new ClaudeClient({
-                apiKey: token,
-                model: this.services.getConfig(CONFIG_KEYS.CLAUDE_MODEL, DEFAULT_CONFIG.claudeModel),
-                maxTokens: 50,
-                temperature: 0,
-            });
             const result = await client.generate('Say "Hello" in one word.');
             if (result.error) {
-                this.postMessage({ command: 'testResult', data: { type: 'claude', success: false, message: result.error } });
+                this.postMessage({ command: 'testResult', data: { type, success: false, message: result.error } });
                 
                 // Track connection test failure
                 this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
-                    type: 'claude',
+                    type: provider,
                     success: false,
                 });
             } else {
-                this.postMessage({ command: 'testResult', data: { type: 'claude', success: true, message: 'Connected successfully!' } });
+                this.postMessage({ command: 'testResult', data: { type, success: true, message: `${getAIProviderLabel(provider)} connected successfully!` } });
                 
                 // Track connection test success
                 this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
-                    type: 'claude',
+                    type: provider,
                     success: true,
                 });
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            this.postMessage({ command: 'testResult', data: { type: 'claude', success: false, message } });
+            this.postMessage({ command: 'testResult', data: { type, success: false, message } });
 
             // Track connection test failure
             this.services.analytics.track(AnalyticsEvents.CONNECTION_TESTED, {
-                type: 'claude',
+                type: provider,
                 success: false,
             });
         }
@@ -579,7 +662,7 @@ export class SettingsPanel {
         <span class="icon">⚙️</span>
         Azure DevOps PR Helper
     </h1>
-    <p class="subtitle">Configure your Azure DevOps and Claude AI settings in one place.</p>
+    <p class="subtitle">Configure Azure DevOps and your preferred AI provider in one place.</p>
 
     <!-- Azure DevOps Section -->
     <div class="section">
@@ -636,64 +719,71 @@ export class SettingsPanel {
         <div id="azureTestResult" class="test-result hidden"></div>
     </div>
 
-    <!-- Claude AI Section -->
+    <!-- AI Provider Section -->
     <div class="section">
         <div class="section-header">
             <span class="icon">🤖</span>
-            <h2>Claude AI Integration</h2>
-            <span id="claude-status" class="status-badge status-not-configured">Not Configured</span>
+            <h2>AI Provider Integration</h2>
+            <span id="ai-status" class="status-badge status-not-configured">Not Configured</span>
+        </div>
+
+        <div class="form-group">
+            <label for="aiProvider">
+                Provider
+                <div class="label-description">Choose the LLM provider for PR title and description generation</div>
+            </label>
+            <select id="aiProvider">
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI</option>
+            </select>
         </div>
         
         <div class="form-group">
-            <label for="claudeToken">
-                Claude API Key
-                <span id="claudeTokenSaved" class="saved-indicator hidden">✓ Saved</span>
-                <div class="label-description">Get your API key from console.anthropic.com</div>
+            <label for="aiApiKey">
+                <span id="apiKeyLabel">API Key</span>
+                <span id="aiApiKeySaved" class="saved-indicator hidden">✓ Saved</span>
+                <div class="label-description" id="apiKeyDescription">Get your API key from your provider console</div>
             </label>
             <div class="input-group">
-                <input type="password" id="claudeToken" placeholder="sk-ant-...">
-                <button class="btn-secondary btn-small" id="toggleClaudeToken" type="button">Show</button>
+                <input type="password" id="aiApiKey" placeholder="Enter your API key">
+                <button class="btn-secondary btn-small" id="toggleAIKey" type="button">Show</button>
             </div>
-            <div class="input-hint" id="claudeTokenHint"></div>
+            <div class="input-hint" id="aiApiKeyHint"></div>
         </div>
         
         <div class="form-row">
             <div class="form-group">
-                <label for="claudeModel">
+                <label for="aiModel">
                     Model
-                    <div class="label-description">Claude model to use for generation</div>
+                    <div class="label-description">Model id to use for generation</div>
                 </label>
-                <select id="claudeModel">
-                    <option value="claude-sonnet-4-5">Claude Sonnet 4.5</option>
-                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                    <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                    <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                </select>
+                <input type="text" id="aiModel" placeholder="Model id">
             </div>
             <div class="form-group">
-                <label for="claudeMaxTokens">
+                <label for="aiMaxTokens">
                     Max Tokens
                     <div class="label-description">Maximum response length</div>
                 </label>
-                <input type="number" id="claudeMaxTokens" min="100" max="4096" value="1024">
+                <input type="number" id="aiMaxTokens" min="100" max="4096" value="1024">
             </div>
         </div>
         
         <div class="form-group">
-            <label for="claudeTemperature">
+            <label for="aiTemperature">
                 Temperature
-                <div class="label-description">Creativity level (0 = focused, 1 = creative)</div>
+                <div class="label-description">Creativity level (0 = focused, 2 = most varied)</div>
             </label>
-            <input type="number" id="claudeTemperature" min="0" max="1" step="0.1" value="0.3">
+            <input type="number" id="aiTemperature" min="0" max="2" step="0.1" value="0.3">
         </div>
         
         <div class="actions">
-            <button class="btn-primary" id="saveClaude">Save Claude Settings</button>
-            <button class="btn-secondary" id="testClaude">Test Connection</button>
-            <button class="btn-danger btn-small" id="clearClaudeToken">Clear Token</button>
+            <button class="btn-primary" id="saveAI">Save AI Settings</button>
+            <button class="btn-secondary" id="testAI">Test Connection</button>
+            <button class="btn-danger btn-small" id="clearAIKey">Clear API Key</button>
         </div>
         
-        <div id="claudeTestResult" class="test-result hidden"></div>
+        <div id="aiTestResult" class="test-result hidden"></div>
     </div>
 
     <!-- AI Behavior Section -->
@@ -706,7 +796,7 @@ export class SettingsPanel {
         <div class="toggle-group">
             <div class="toggle-info">
                 <div class="toggle-label">Enable AI Suggestions</div>
-                <div class="toggle-description">Use Claude AI to generate PR titles and descriptions</div>
+                <div class="toggle-description">Use the selected AI provider to generate PR titles and descriptions</div>
             </div>
             <label class="toggle-switch">
                 <input type="checkbox" id="useAI">
@@ -767,21 +857,67 @@ export class SettingsPanel {
             azurePATSaved: document.getElementById('azurePATSaved'),
             azurePATHint: document.getElementById('azurePATHint'),
             apiVersion: document.getElementById('apiVersion'),
-            claudeToken: document.getElementById('claudeToken'),
-            claudeTokenSaved: document.getElementById('claudeTokenSaved'),
-            claudeTokenHint: document.getElementById('claudeTokenHint'),
-            claudeModel: document.getElementById('claudeModel'),
-            claudeMaxTokens: document.getElementById('claudeMaxTokens'),
-            claudeTemperature: document.getElementById('claudeTemperature'),
+            aiProvider: document.getElementById('aiProvider'),
+            apiKeyLabel: document.getElementById('apiKeyLabel'),
+            apiKeyDescription: document.getElementById('apiKeyDescription'),
+            aiApiKey: document.getElementById('aiApiKey'),
+            aiApiKeySaved: document.getElementById('aiApiKeySaved'),
+            aiApiKeyHint: document.getElementById('aiApiKeyHint'),
+            aiModel: document.getElementById('aiModel'),
+            aiMaxTokens: document.getElementById('aiMaxTokens'),
+            aiTemperature: document.getElementById('aiTemperature'),
             useAI: document.getElementById('useAI'),
             generateDescription: document.getElementById('generateDescription'),
             autoAcceptAI: document.getElementById('autoAcceptAI'),
             enableTelemetry: document.getElementById('enableTelemetry'),
             azureStatus: document.getElementById('azure-status'),
-            claudeStatus: document.getElementById('claude-status'),
+            aiStatus: document.getElementById('ai-status'),
             azureTestResult: document.getElementById('azureTestResult'),
-            claudeTestResult: document.getElementById('claudeTestResult'),
+            aiTestResult: document.getElementById('aiTestResult'),
         };
+
+        const providers = {
+            anthropic: {
+                label: 'Anthropic',
+                keyLabel: 'Anthropic API Key',
+                description: 'Get your API key from console.anthropic.com',
+                placeholder: 'sk-ant-...',
+                defaultModel: 'claude-sonnet-4-5',
+                secretKey: 'anthropicApiKey',
+            },
+            gemini: {
+                label: 'Google Gemini',
+                keyLabel: 'Gemini API Key',
+                description: 'Get your API key from Google AI Studio',
+                placeholder: 'AIza...',
+                defaultModel: 'gemini-2.5-flash',
+                secretKey: 'geminiApiKey',
+            },
+            openai: {
+                label: 'OpenAI',
+                keyLabel: 'OpenAI API Key',
+                description: 'Get your API key from platform.openai.com',
+                placeholder: 'sk-...',
+                defaultModel: 'gpt-4o-mini',
+                secretKey: 'openaiApiKey',
+            },
+        };
+
+        function selectedProvider() {
+            return providers[elements.aiProvider.value] ? elements.aiProvider.value : 'anthropic';
+        }
+
+        function updateProviderUi(hasKey = false) {
+            const provider = providers[selectedProvider()];
+            elements.apiKeyLabel.textContent = provider.keyLabel;
+            elements.apiKeyDescription.textContent = provider.description;
+            if (!elements.aiModel.value) {
+                elements.aiModel.value = provider.defaultModel;
+            }
+            if (!hasKey) {
+                elements.aiApiKey.placeholder = provider.placeholder;
+            }
+        }
         
         // Password toggle
         function setupPasswordToggle(inputId, buttonId) {
@@ -794,7 +930,7 @@ export class SettingsPanel {
             });
         }
         setupPasswordToggle('azurePAT', 'toggleAzurePAT');
-        setupPasswordToggle('claudeToken', 'toggleClaudeToken');
+        setupPasswordToggle('aiApiKey', 'toggleAIKey');
         
         // Toast notification
         function showToast(message) {
@@ -823,24 +959,77 @@ export class SettingsPanel {
         
         // Save Azure settings
         document.getElementById('saveAzure').addEventListener('click', () => {
-            vscode.postMessage({ command: 'saveConfig', key: 'orgHost', value: elements.orgHost.value });
-            vscode.postMessage({ command: 'saveConfig', key: 'project', value: elements.project.value });
-            vscode.postMessage({ command: 'saveConfig', key: 'apiVersion', value: elements.apiVersion.value });
+            const orgHost = elements.orgHost.value.trim();
+            const project = elements.project.value.trim();
+            const apiVersion = elements.apiVersion.value.trim();
+
+            if (!/^https?:\\/\\/[^/]+/.test(orgHost)) {
+                showTestResult(elements.azureTestResult, false, 'Organization URL must start with http:// or https://');
+                return;
+            }
+
+            if (!project) {
+                showTestResult(elements.azureTestResult, false, 'Project name is required');
+                return;
+            }
+
+            if (!/^\\d+(\\.\\d+)?$/.test(apiVersion)) {
+                showTestResult(elements.azureTestResult, false, 'API version must look like 7.1');
+                return;
+            }
+
+            vscode.postMessage({ command: 'saveConfig', key: 'orgHost', value: orgHost });
+            vscode.postMessage({ command: 'saveConfig', key: 'project', value: project });
+            vscode.postMessage({ command: 'saveConfig', key: 'apiVersion', value: apiVersion });
             if (elements.azurePAT.value) {
-                vscode.postMessage({ command: 'saveSecret', key: 'azureDevOpsPAT', value: elements.azurePAT.value });
+                vscode.postMessage({ command: 'saveSecret', key: 'azureDevOpsPAT', value: elements.azurePAT.value.trim() });
             }
             showToast('Azure settings saved');
         });
         
-        // Save Claude settings
-        document.getElementById('saveClaude').addEventListener('click', () => {
-            vscode.postMessage({ command: 'saveConfig', key: 'claudeModel', value: elements.claudeModel.value });
-            vscode.postMessage({ command: 'saveConfig', key: 'claudeMaxTokens', value: parseInt(elements.claudeMaxTokens.value) });
-            vscode.postMessage({ command: 'saveConfig', key: 'claudeTemperature', value: parseFloat(elements.claudeTemperature.value) });
-            if (elements.claudeToken.value) {
-                vscode.postMessage({ command: 'saveSecret', key: 'claudeToken', value: elements.claudeToken.value });
+        // Save AI settings
+        document.getElementById('saveAI').addEventListener('click', () => {
+            const provider = providers[selectedProvider()];
+            const model = (elements.aiModel.value || provider.defaultModel).trim();
+            const maxTokens = Number(elements.aiMaxTokens.value);
+            const temperature = Number(elements.aiTemperature.value);
+
+            if (!model) {
+                showTestResult(elements.aiTestResult, false, 'Model is required');
+                return;
             }
-            showToast('Claude settings saved');
+
+            if (!Number.isInteger(maxTokens) || maxTokens < 100 || maxTokens > 4096) {
+                showTestResult(elements.aiTestResult, false, 'Max tokens must be an integer from 100 to 4096');
+                return;
+            }
+
+            if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+                showTestResult(elements.aiTestResult, false, 'Temperature must be between 0 and 2');
+                return;
+            }
+
+            vscode.postMessage({ command: 'saveConfig', key: 'aiProvider', value: selectedProvider() });
+            vscode.postMessage({ command: 'saveConfig', key: 'aiModel', value: model });
+            vscode.postMessage({ command: 'saveConfig', key: 'aiMaxTokens', value: maxTokens });
+            vscode.postMessage({ command: 'saveConfig', key: 'aiTemperature', value: temperature });
+            if (elements.aiApiKey.value) {
+                vscode.postMessage({ command: 'saveSecret', key: provider.secretKey, value: elements.aiApiKey.value.trim() });
+            }
+            showToast('AI settings saved');
+        });
+
+        elements.aiProvider.addEventListener('change', () => {
+            const provider = providers[selectedProvider()];
+            elements.aiApiKey.value = '';
+            elements.aiApiKey.placeholder = provider.placeholder;
+            elements.aiApiKeySaved.classList.add('hidden');
+            elements.aiApiKeyHint.textContent = '';
+            elements.aiApiKeyHint.className = 'input-hint';
+            elements.aiModel.value = provider.defaultModel;
+            vscode.postMessage({ command: 'saveConfig', key: 'aiProvider', value: selectedProvider() });
+            vscode.postMessage({ command: 'saveConfig', key: 'aiModel', value: provider.defaultModel });
+            updateProviderUi(false);
         });
         
         // Toggle handlers
@@ -859,11 +1048,11 @@ export class SettingsPanel {
             vscode.postMessage({ command: 'testConnection' });
         });
         
-        document.getElementById('testClaude').addEventListener('click', () => {
-            elements.claudeTestResult.textContent = 'Testing...';
-            elements.claudeTestResult.className = 'test-result';
-            elements.claudeTestResult.classList.remove('hidden');
-            vscode.postMessage({ command: 'testClaude' });
+        document.getElementById('testAI').addEventListener('click', () => {
+            elements.aiTestResult.textContent = 'Testing...';
+            elements.aiTestResult.className = 'test-result';
+            elements.aiTestResult.classList.remove('hidden');
+            vscode.postMessage({ command: 'testAI' });
         });
         
         // Clear secrets (confirm() doesn't work in webviews, so we clear directly)
@@ -877,14 +1066,14 @@ export class SettingsPanel {
             showToast('PAT cleared');
         });
         
-        document.getElementById('clearClaudeToken').addEventListener('click', () => {
-            vscode.postMessage({ command: 'deleteSecret', key: 'claudeToken' });
-            elements.claudeToken.value = '';
-            elements.claudeToken.placeholder = 'sk-ant-...';
-            elements.claudeTokenSaved.classList.add('hidden');
-            elements.claudeTokenHint.textContent = '';
-            updateStatus(elements.claudeStatus, false);
-            showToast('Token cleared');
+        document.getElementById('clearAIKey').addEventListener('click', () => {
+            vscode.postMessage({ command: 'deleteAISecret' });
+            elements.aiApiKey.value = '';
+            elements.aiApiKey.placeholder = providers[selectedProvider()].placeholder;
+            elements.aiApiKeySaved.classList.add('hidden');
+            elements.aiApiKeyHint.textContent = '';
+            updateStatus(elements.aiStatus, false);
+            showToast('API key cleared');
         });
         
         // Handle messages from extension
@@ -897,15 +1086,17 @@ export class SettingsPanel {
                     elements.orgHost.value = s.orgHost || '';
                     elements.project.value = s.project || '';
                     elements.apiVersion.value = s.apiVersion || '7.1';
-                    elements.claudeModel.value = s.claudeModel || 'claude-sonnet-4-5';
-                    elements.claudeMaxTokens.value = s.claudeMaxTokens || 1024;
-                    elements.claudeTemperature.value = s.claudeTemperature || 0.3;
+                    elements.aiProvider.value = s.aiProvider || 'anthropic';
+                    updateProviderUi(s.hasAIKey);
+                    elements.aiModel.value = s.aiModel || providers[selectedProvider()].defaultModel;
+                    elements.aiMaxTokens.value = s.aiMaxTokens || 1024;
+                    elements.aiTemperature.value = s.aiTemperature || 0.3;
                     elements.useAI.checked = s.useAI !== false;
                     elements.generateDescription.checked = s.generateDescription !== false;
                     elements.autoAcceptAI.checked = s.autoAcceptAI === true;
                     elements.enableTelemetry.checked = s.enableTelemetry !== false;
                     updateStatus(elements.azureStatus, s.hasAzurePAT);
-                    updateStatus(elements.claudeStatus, s.hasClaudeToken);
+                    updateStatus(elements.aiStatus, s.hasAIKey);
                     
                     // Show saved indicator and hint for existing secrets
                     if (s.hasAzurePAT) {
@@ -921,17 +1112,17 @@ export class SettingsPanel {
                         elements.azurePATHint.className = 'input-hint';
                     }
                     
-                    if (s.hasClaudeToken) {
-                        elements.claudeToken.placeholder = '••••••••••••••••••••••••••••••••';
-                        elements.claudeToken.value = '';
-                        elements.claudeTokenSaved.classList.remove('hidden');
-                        elements.claudeTokenHint.textContent = 'API key is securely stored. Enter a new value to replace it.';
-                        elements.claudeTokenHint.className = 'input-hint has-value';
+                    if (s.hasAIKey) {
+                        elements.aiApiKey.placeholder = '••••••••••••••••••••••••••••••••';
+                        elements.aiApiKey.value = '';
+                        elements.aiApiKeySaved.classList.remove('hidden');
+                        elements.aiApiKeyHint.textContent = 'API key is securely stored. Enter a new value to replace it.';
+                        elements.aiApiKeyHint.className = 'input-hint has-value';
                     } else {
-                        elements.claudeToken.placeholder = 'sk-ant-...';
-                        elements.claudeTokenSaved.classList.add('hidden');
-                        elements.claudeTokenHint.textContent = '';
-                        elements.claudeTokenHint.className = 'input-hint';
+                        elements.aiApiKey.placeholder = providers[selectedProvider()].placeholder;
+                        elements.aiApiKeySaved.classList.add('hidden');
+                        elements.aiApiKeyHint.textContent = '';
+                        elements.aiApiKeyHint.className = 'input-hint';
                     }
                     break;
                     
@@ -939,8 +1130,8 @@ export class SettingsPanel {
                     const result = msg.data;
                     if (result.type === 'azure') {
                         showTestResult(elements.azureTestResult, result.success, result.message);
-                    } else if (result.type === 'claude') {
-                        showTestResult(elements.claudeTestResult, result.success, result.message);
+                    } else if (result.type === 'ai') {
+                        showTestResult(elements.aiTestResult, result.success, result.message);
                     }
                     break;
                     
@@ -952,6 +1143,10 @@ export class SettingsPanel {
                     
                 case 'secretDeleted':
                     vscode.postMessage({ command: 'getSettings' });
+                    break;
+
+                case 'saveError':
+                    showToast('Save failed: ' + (msg.error || 'Invalid value'));
                     break;
             }
         });

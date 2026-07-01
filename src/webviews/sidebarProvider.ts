@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
+import { createAIClientFromServices, getAIProviderLabel } from '../api/ai';
 import { ExtensionServices, WebviewMessage } from '../types';
 import { COMMANDS, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
 import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff } from '../utils/git';
 import { getNonce } from '../utils/helpers';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'claudeSidebarView';
+    public static readonly viewType = 'prHelperSidebarView';
     private view?: vscode.WebviewView;
 
     constructor(private readonly services: ExtensionServices) {}
@@ -37,7 +38,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     const commits = getCommitMessages(targetBranch);
                     
                     const result = await vscode.commands.executeCommand(
-                        COMMANDS.GENERATE_CLAUDE_TITLE,
+                        COMMANDS.GENERATE_AI_TITLE,
                         { 
                             prompt: message.prompt, 
                             branch: message.branch,
@@ -51,13 +52,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                 case 'getContext': {
                     const hasAzure = !!(await this.services.getSecret(SECRET_KEYS.AZURE_PAT));
-                    const hasClaude = !!(await this.services.getSecret(SECRET_KEYS.CLAUDE_TOKEN));
+                    const { client, provider } = await createAIClientFromServices(this.services);
+                    const hasAI = !!client;
                     const branch = getCurrentBranch() ?? '';
                     const repo = getCurrentRepoName() ?? '';
                     const lastPrUrl = this.services.getState<string>(STATE_KEYS.LAST_PR_URL);
                     webviewView.webview.postMessage({
                         command: 'context',
-                        data: { hasAzure, hasClaude, branch, repo, lastPrUrl }
+                        data: { hasAzure, hasAI, aiProviderLabel: getAIProviderLabel(provider), branch, repo, lastPrUrl }
                     });
                     break;
                 }
@@ -343,8 +345,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <div class="context-row">
             <span class="status-dot" id="azureStatus"></span>
             <span class="context-label">Azure</span>
-            <span class="status-dot" id="claudeStatus"></span>
-            <span class="context-label">Claude</span>
+            <span class="status-dot" id="aiStatus"></span>
+            <span class="context-label" id="aiStatusLabel">AI</span>
         </div>
     </div>
     
@@ -354,7 +356,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <button id="openSettingsFromWarning">Settings</button>
     </div>
     
-    <!-- AI Title Generator - only visible when Claude is configured -->
+    <!-- AI Title Generator - only visible when an AI provider is configured -->
     <div id="titleGeneratorSection" class="hidden">
         <textarea id="customPrompt" placeholder="Optional: Describe the style you want (e.g., 'Mahishmati style', 'conventional commits format'). The diff will be analyzed automatically..."></textarea>
         
@@ -402,7 +404,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             branchName: document.getElementById('branchName'),
             repoName: document.getElementById('repoName'),
             azureStatus: document.getElementById('azureStatus'),
-            claudeStatus: document.getElementById('claudeStatus'),
+            aiStatus: document.getElementById('aiStatus'),
+            aiStatusLabel: document.getElementById('aiStatusLabel'),
             titleGeneratorSection: document.getElementById('titleGeneratorSection'),
             customPrompt: document.getElementById('customPrompt'),
             targetBranch: document.getElementById('targetBranch'),
@@ -461,20 +464,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     elements.repoName.textContent = ctx.repo || 'Not detected';
                     
                     elements.azureStatus.className = 'status-dot ' + (ctx.hasAzure ? 'status-ok' : 'status-warning');
-                    elements.claudeStatus.className = 'status-dot ' + (ctx.hasClaude ? 'status-ok' : 'status-warning');
+                    elements.aiStatus.className = 'status-dot ' + (ctx.hasAI ? 'status-ok' : 'status-warning');
+                    elements.aiStatusLabel.textContent = ctx.aiProviderLabel || 'AI';
                     
                     if (ctx.lastPrUrl) {
                         elements.lastPrInfo.textContent = 'Click to copy URL';
                     }
                     
-                    // Show/hide title generator based on Claude token
-                    if (ctx.hasClaude) {
+                    // Show/hide title generator based on the selected AI provider key
+                    if (ctx.hasAI) {
                         elements.titleGeneratorSection.classList.remove('hidden');
                     } else {
                         elements.titleGeneratorSection.classList.add('hidden');
                     }
                     
-                    // Show warning only if Azure is not configured (Claude warning handled by hiding section)
+                    // Show warning only if Azure is not configured (AI warning handled by hiding section)
                     if (!ctx.hasAzure) {
                         elements.warningBanner.classList.remove('hidden');
                         elements.warningText.textContent = 'Azure PAT not configured';

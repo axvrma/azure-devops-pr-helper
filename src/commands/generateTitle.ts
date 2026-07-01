@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
-import { ClaudeClient } from '../api/claude';
-import { ClaudeGenerationResult, ExtensionServices } from '../types';
-import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS } from '../utils/constants';
+import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle } from '../api/ai';
+import { AIGenerationResult, ExtensionServices } from '../types';
 import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
 
 export interface GenerateTitleArgs {
@@ -12,35 +11,24 @@ export interface GenerateTitleArgs {
     commits?: string;
 }
 
-export async function generateClaudeTitleCommand(
+export async function generateAITitleCommand(
     services: ExtensionServices,
     args?: GenerateTitleArgs
-): Promise<ClaudeGenerationResult> {
-    const claudeToken = await services.getSecret(SECRET_KEYS.CLAUDE_TOKEN);
-    
-    if (!claudeToken) {
+): Promise<AIGenerationResult> {
+    const { client, provider, model, error } = await createAIClientFromServices(services);
+
+    if (!client) {
         const openSettings = await vscode.window.showWarningMessage(
-            'Claude token not found. Configure it in settings.',
+            `${error ?? 'AI provider API key not found'}. Configure it in settings.`,
             'Open Settings'
         );
         if (openSettings) {
             vscode.commands.executeCommand('extension.openSettings');
         }
-        return { error: 'no-token' };
+        return { error: 'no-token', provider };
     }
 
-    const claudeModel = services.getConfig(CONFIG_KEYS.CLAUDE_MODEL, DEFAULT_CONFIG.claudeModel);
-    const claudeMaxTokens = services.getConfig(CONFIG_KEYS.CLAUDE_MAX_TOKENS, DEFAULT_CONFIG.claudeMaxTokens);
-    const claudeTemperature = services.getConfig(CONFIG_KEYS.CLAUDE_TEMPERATURE, DEFAULT_CONFIG.claudeTemperature);
-
-    const claudeClient = new ClaudeClient({
-        apiKey: claudeToken,
-        model: claudeModel,
-        maxTokens: claudeMaxTokens,
-        temperature: claudeTemperature,
-    });
-
-    const branch = getCurrentBranch() || args?.branch || 'feature';
+    const branch = args?.branch || getCurrentBranch() || 'feature';
     const repo = getCurrentRepoName() || 'repository';
 
     // Build context-aware prompt
@@ -86,12 +74,16 @@ Repository: ${repo}`;
     }
 
     try {
-        const result = await claudeClient.generate(prompt);
+        const result = await client.generate(prompt);
+        if (result.title && !result.error) {
+            result.title = normalizeGeneratedTitle(result.title);
+        }
         
         // Track AI generation success
         if (result.title && !result.error) {
             services.analytics.track(AnalyticsEvents.AI_TITLE_GENERATED, {
-                model: claudeModel,
+                provider,
+                model,
                 has_custom_prompt: !!args?.prompt,
                 has_diff: !!args?.diff,
             });
@@ -104,13 +96,14 @@ Repository: ${repo}`;
         return result;
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error('Claude generation error:', err);
+        console.error(`${getAIProviderLabel(provider)} generation error:`, err);
         
         // Track AI generation failure
         services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {
+            provider,
             error_type: message,
         });
         
-        return { error: message };
+        return { error: message, provider };
     }
 }
