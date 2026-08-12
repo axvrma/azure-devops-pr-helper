@@ -15,6 +15,7 @@ export const ANALYTICS = {
 // Global state keys
 export const STATE_KEYS = {
     LAST_PR_URL: 'lastPrUrl',
+    PR_HISTORY: 'prHistory',
 } as const;
 
 // Configuration keys (under 'azureDevopsPr' namespace)

@@ -2,22 +2,10 @@ import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import { AzureDevOpsClient } from '../api/azureDevOps';
 import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle, PRPrompts } from '../api/ai';
-import { AzureRepository, ExtensionServices } from '../types';
+import { AzureRepository, ExtensionServices, PRHistoryItem } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
 import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff, isValidBranchName } from '../utils/git';
 import { getNonce, parseWorkItemIds } from '../utils/helpers';
-
-interface PRHistoryItem {
-    id: number;
-    title: string;
-    description: string;
-    url: string;
-    sourceBranch: string;
-    targetBranch: string;
-    repository: string;
-    createdAt: string;
-    workItems: string[];
-}
 
 interface CreatePullRequestFormData {
     repositoryId: string;
@@ -29,7 +17,6 @@ interface CreatePullRequestFormData {
     generatedByAI?: boolean;
 }
 
-const PR_HISTORY_KEY = 'prHistory';
 const MAX_PR_HISTORY = 10;
 
 export class PRCreatorPanel {
@@ -142,7 +129,7 @@ export class PRCreatorPanel {
         const currentRepo = getCurrentRepoName() || '';
         const useAI = this.services.getConfig(CONFIG_KEYS.USE_AI, DEFAULT_CONFIG.useAI);
         const generateDescription = this.services.getConfig(CONFIG_KEYS.GENERATE_DESCRIPTION, DEFAULT_CONFIG.generateDescription);
-        const prHistory = this.services.getState<PRHistoryItem[]>(PR_HISTORY_KEY) || [];
+        const prHistory = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
 
         this.postMessage({
             command: 'initialData',
@@ -421,7 +408,7 @@ export class PRCreatorPanel {
     }
 
     private async addToPRHistory(item: PRHistoryItem): Promise<void> {
-        const history = this.services.getState<PRHistoryItem[]>(PR_HISTORY_KEY) || [];
+        const history = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
         history.unshift(item);
         
         // Keep only last N items
@@ -429,18 +416,18 @@ export class PRCreatorPanel {
             history.splice(MAX_PR_HISTORY);
         }
         
-        await this.services.setState(PR_HISTORY_KEY, history);
+        await this.services.setState(STATE_KEYS.PR_HISTORY, history);
     }
 
     private async deletePRFromHistory(prId: number): Promise<void> {
-        const history = this.services.getState<PRHistoryItem[]>(PR_HISTORY_KEY) || [];
+        const history = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
         const filtered = history.filter(item => item.id !== prId);
-        await this.services.setState(PR_HISTORY_KEY, filtered);
+        await this.services.setState(STATE_KEYS.PR_HISTORY, filtered);
         this.postMessage({ command: 'historyUpdated', data: filtered });
     }
 
     private async clearPRHistory(): Promise<void> {
-        await this.services.setState(PR_HISTORY_KEY, []);
+        await this.services.setState(STATE_KEYS.PR_HISTORY, []);
         this.postMessage({ command: 'historyUpdated', data: [] });
     }
 

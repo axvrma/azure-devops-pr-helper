@@ -130,6 +130,18 @@ export interface ExtensionState {
     lastPrUrl?: string;
 }
 
+export interface PRHistoryItem {
+    id: number;
+    title: string;
+    description: string;
+    url: string;
+    sourceBranch: string;
+    targetBranch: string;
+    repository: string;
+    createdAt: string;
+    workItems: string[];
+}
+
 // Webview Message Types
 export interface WebviewMessage {
     command: string;
@@ -137,6 +149,7 @@ export interface WebviewMessage {
     value?: string | boolean | number;
     prompt?: string;
     branch?: string;
+    url?: string;
     data?: Record<string, unknown>;
     result?: AIGenerationResult;
     error?: string;
