@@ -43,10 +43,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     await vscode.commands.executeCommand(COMMANDS.OPEN_SETTINGS);
                     break;
 
-                case 'copyPrUrl':
-                    await vscode.commands.executeCommand(COMMANDS.COPY_PR_URL);
-                    break;
-
                 case 'openPRCreator':
                     await vscode.commands.executeCommand('extension.openPRCreator');
                     break;
@@ -80,7 +76,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const { client, provider } = await createAIClientFromServices(this.services);
         const branch = getCurrentBranch() ?? '';
         const repo = getCurrentRepoName() ?? '';
-        const lastPrUrl = this.services.getState<string>(STATE_KEYS.LAST_PR_URL);
         const prHistory = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
 
         await webviewView.webview.postMessage({
@@ -91,7 +86,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 aiProviderLabel: getAIProviderLabel(provider),
                 branch,
                 repo,
-                lastPrUrl,
                 prHistory,
             },
         });
@@ -409,13 +403,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 <div class="quick-action-desc">Open full PR creation page</div>
             </div>
         </div>
-        <div class="quick-action" id="copyUrlAction">
-            <span class="quick-action-icon">📋</span>
-            <div class="quick-action-text">
-                <div class="quick-action-title">Copy Last PR URL</div>
-                <div class="quick-action-desc" id="lastPrInfo">No PR created yet</div>
-            </div>
-        </div>
     </div>
 
     <section class="history-section" aria-labelledby="recentPRsTitle">
@@ -441,7 +428,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             aiStatus: document.getElementById('aiStatus'),
             aiStatusLabel: document.getElementById('aiStatusLabel'),
             warningBanner: document.getElementById('warningBanner'),
-            lastPrInfo: document.getElementById('lastPrInfo'),
             clearHistoryBtn: document.getElementById('clearHistoryBtn'),
             prHistoryList: document.getElementById('prHistoryList'),
         };
@@ -452,10 +438,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         document.getElementById('openPRCreatorAction').addEventListener('click', () => {
             vscode.postMessage({ command: 'openPRCreator' });
-        });
-
-        document.getElementById('copyUrlAction').addEventListener('click', () => {
-            vscode.postMessage({ command: 'copyPrUrl' });
         });
 
         elements.clearHistoryBtn.addEventListener('click', () => {
@@ -539,7 +521,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     elements.azureStatus.className = 'status-dot ' + (ctx.hasAzure ? 'status-ok' : 'status-warning');
                     elements.aiStatus.className = 'status-dot ' + (ctx.hasAI ? 'status-ok' : 'status-warning');
                     elements.aiStatusLabel.textContent = ctx.aiProviderLabel || 'AI';
-                    elements.lastPrInfo.textContent = ctx.lastPrUrl ? 'Click to copy URL' : 'No PR created yet';
                     elements.warningBanner.classList.toggle('hidden', ctx.hasAzure);
                     renderPRHistory(ctx.prHistory);
                     break;

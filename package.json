@@ -3,7 +3,7 @@
     "displayName": "Azure DevOps PR Helper",
     "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Anthropic, Gemini, or OpenAI",
     "publisher": "axvrma",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "license": "MIT",
     "icon": "images/icon.png",
     "galleryBanner": {
@@ -47,6 +47,7 @@
         "onView:prHelperSidebarView"
     ],
     "scripts": {
+        "vscode:package": "npm ci && npm run compile && npx @vscode/vsce package",
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
