@@ -6,6 +6,7 @@ export interface AzureRepository {
     id: string;
     name: string;
     url: string;
+    defaultBranch?: string;
     project: {
         id: string;
         name: string;
@@ -15,6 +16,16 @@ export interface AzureRepository {
 export interface AzureRepositoryListResponse {
     count: number;
     value: AzureRepository[];
+}
+
+export interface AzureGitRef {
+    name: string;
+    objectId: string;
+}
+
+export interface AzureGitRefListResponse {
+    count: number;
+    value: AzureGitRef[];
 }
 
 export interface AzurePullRequestLinks {

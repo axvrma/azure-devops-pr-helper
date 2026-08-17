@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import * as vscode from 'vscode';
 import {
     AzureApiError,
+    AzureGitRefListResponse,
     AzurePullRequest,
     AzurePullRequestCreatePayload,
     AzureRepository,
@@ -65,6 +66,52 @@ export class AzureDevOpsClient {
             return items;
         } catch (error) {
             this.handleError(error, 'List repositories');
+        }
+    }
+
+    /**
+     * List branch names for a repository from Azure DevOps Git refs.
+     */
+    async listBranches(repositoryId: string): Promise<string[]> {
+        const refs: string[] = [];
+        let continuationToken: string | undefined;
+
+        try {
+            do {
+                const params = new URLSearchParams({
+                    filter: 'heads/',
+                    '$top': '1000',
+                    'api-version': this.apiVersion,
+                });
+
+                if (continuationToken) {
+                    params.set('continuationToken', continuationToken);
+                }
+
+                const url = `${this.orgUrl}/${this.project}/_apis/git/repositories/${encodeURIComponent(repositoryId)}/refs?${params.toString()}`;
+                const response = await axios.get<AzureGitRefListResponse>(url, {
+                    headers: { Authorization: this.authHeader },
+                    timeout: 15000,
+                });
+
+                const items = response.data?.value;
+                if (!Array.isArray(items)) {
+                    throw new Error('Invalid response: expected array of Git refs');
+                }
+
+                refs.push(...items
+                    .map(ref => ref.name)
+                    .filter(name => name.startsWith('refs/heads/'))
+                    .map(name => name.slice('refs/heads/'.length))
+                );
+
+                const header = response.headers['x-ms-continuationtoken'];
+                continuationToken = Array.isArray(header) ? header[0] : header;
+            } while (continuationToken);
+
+            return [...new Set(refs)].sort((a, b) => a.localeCompare(b));
+        } catch (error) {
+            this.handleError(error, 'List branches');
         }
     }
 

@@ -85,6 +85,9 @@ export class PRCreatorPanel {
                     case 'loadRepositories':
                         await this.loadRepositories();
                         break;
+                    case 'loadBranches':
+                        await this.loadBranches(message.repositoryId);
+                        break;
                     case 'generateAI':
                         await this.generateAIContent(message.branch, message.repo, message.targetBranch);
                         break;
@@ -180,7 +183,7 @@ export class PRCreatorPanel {
             this.postMessage({
                 command: 'repositoriesLoaded',
                 data: {
-                    repositories: this.repositories.map(r => ({ id: r.id, name: r.name })),
+                    repositories: this.repositories.map(r => ({ id: r.id, name: r.name, defaultBranch: this.normalizeBranchName(r.defaultBranch) })),
                     selectedRepoId,
                 }
             });
@@ -193,6 +196,49 @@ export class PRCreatorPanel {
             const message = error instanceof Error ? error.message : String(error);
             this.postMessage({ command: 'error', message: `Failed to load repositories: ${message}` });
         }
+    }
+
+    private async loadBranches(repositoryId: unknown): Promise<void> {
+        if (typeof repositoryId !== 'string' || !repositoryId.trim()) {
+            this.postMessage({ command: 'branchesLoadError', repositoryId: '', message: 'Select a repository first.' });
+            return;
+        }
+
+        const repository = this.repositories.find(repo => repo.id === repositoryId);
+        if (!repository) {
+            this.postMessage({ command: 'branchesLoadError', repositoryId, message: 'The selected repository is no longer available.' });
+            return;
+        }
+
+        const pat = await this.services.getSecret(SECRET_KEYS.AZURE_PAT);
+        if (!pat) {
+            this.postMessage({ command: 'branchesLoadError', repositoryId, message: 'Azure PAT not configured.' });
+            return;
+        }
+
+        const orgUrl = this.services.getConfig(CONFIG_KEYS.ORG_HOST, DEFAULT_CONFIG.orgHost);
+        const project = this.services.getConfig(CONFIG_KEYS.PROJECT, DEFAULT_CONFIG.project);
+        const apiVersion = this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion);
+
+        try {
+            const client = new AzureDevOpsClient(orgUrl, project, pat, apiVersion);
+            const branches = await client.listBranches(repositoryId);
+            this.postMessage({
+                command: 'branchesLoaded',
+                data: {
+                    repositoryId,
+                    branches,
+                    defaultBranch: this.normalizeBranchName(repository.defaultBranch),
+                },
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.postMessage({ command: 'branchesLoadError', repositoryId, message: `Failed to load branches: ${message}` });
+        }
+    }
+
+    private normalizeBranchName(branch?: string): string {
+        return branch?.replace(/^refs\/heads\//, '') ?? '';
     }
 
     private async generateAIContent(branch: string, repo: string, targetBranch?: string): Promise<void> {
@@ -578,6 +624,69 @@ export class PRCreatorPanel {
             outline: none;
             border-color: var(--vscode-focusBorder);
         }
+
+        .searchable-select {
+            position: relative;
+            width: 100%;
+        }
+
+        .input-with-button .searchable-select {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .searchable-select input {
+            padding-right: 30px;
+        }
+
+        .searchable-select::after {
+            content: '▾';
+            position: absolute;
+            top: 8px;
+            right: 11px;
+            color: var(--vscode-descriptionForeground);
+            pointer-events: none;
+        }
+
+        .dropdown-options {
+            position: absolute;
+            z-index: 20;
+            top: calc(100% + 3px);
+            left: 0;
+            right: 0;
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 4px;
+            border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+            border-radius: 4px;
+            background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .dropdown-option {
+            display: block;
+            width: 100%;
+            padding: 7px 9px;
+            border-radius: 2px;
+            background: transparent;
+            color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+            text-align: left;
+            font-weight: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .dropdown-option:hover,
+        .dropdown-option.active {
+            opacity: 1;
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .dropdown-empty {
+            padding: 8px 9px;
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+        }
         
         textarea {
             min-height: 80px;
@@ -875,21 +984,29 @@ export class PRCreatorPanel {
                 <div class="form-group">
                     <label>Repository</label>
                     <div class="input-with-button">
-                        <select id="repository" disabled>
-                            <option value="">Loading repositories...</option>
-                        </select>
+                        <div class="searchable-select">
+                            <input type="hidden" id="repository">
+                            <input type="text" id="repositorySearch" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off" placeholder="Loading repositories..." disabled>
+                            <div id="repositoryOptions" class="dropdown-options hidden" role="listbox"></div>
+                        </div>
                         <button class="btn-secondary btn-icon" id="refreshRepos" title="Refresh">🔄</button>
                     </div>
                 </div>
                 
                 <div class="form-group">
                     <label>Source Branch <span class="label-hint">(your feature branch)</span></label>
-                    <input type="text" id="sourceBranch" placeholder="feature/my-feature">
+                    <div class="searchable-select">
+                        <input type="text" id="sourceBranch" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off" placeholder="Select a repository first" disabled>
+                        <div id="sourceBranchOptions" class="dropdown-options hidden" role="listbox"></div>
+                    </div>
                 </div>
                 
                 <div class="form-group">
                     <label>Target Branch <span class="label-hint">(merge into)</span></label>
-                    <input type="text" id="targetBranch" placeholder="main">
+                    <div class="searchable-select">
+                        <input type="text" id="targetBranch" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off" placeholder="Select a repository first" disabled>
+                        <div id="targetBranchOptions" class="dropdown-options hidden" role="listbox"></div>
+                    </div>
                 </div>
                 
                 <div class="form-group">
@@ -946,8 +1063,12 @@ export class PRCreatorPanel {
         // Elements
         const elements = {
             repository: document.getElementById('repository'),
+            repositorySearch: document.getElementById('repositorySearch'),
+            repositoryOptions: document.getElementById('repositoryOptions'),
             sourceBranch: document.getElementById('sourceBranch'),
+            sourceBranchOptions: document.getElementById('sourceBranchOptions'),
             targetBranch: document.getElementById('targetBranch'),
+            targetBranchOptions: document.getElementById('targetBranchOptions'),
             prTitle: document.getElementById('prTitle'),
             prDescription: document.getElementById('prDescription'),
             workItems: document.getElementById('workItems'),
@@ -969,6 +1090,160 @@ export class PRCreatorPanel {
         let isCreating = false;
         let isGenerating = false;
         let aiGeneratedApplied = false;
+        let repositories = [];
+        let branches = [];
+        let currentBranch = '';
+        let currentRepo = '';
+        let selectedSourceBranch = '';
+        let selectedTargetBranch = '';
+
+        function closeDropdown(input, optionsElement) {
+            optionsElement.classList.add('hidden');
+            input.setAttribute('aria-expanded', 'false');
+        }
+
+        function configureCombobox(input, optionsElement, getOptions, getLabel, onSelect, onQuery) {
+            let activeIndex = -1;
+
+            const render = () => {
+                const query = input.value.trim().toLowerCase();
+                const matches = getOptions().filter(option => getLabel(option).toLowerCase().includes(query));
+                optionsElement.replaceChildren();
+                activeIndex = -1;
+
+                if (matches.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.className = 'dropdown-empty';
+                    empty.textContent = getOptions().length === 0 ? 'No options available' : 'No matches found';
+                    optionsElement.appendChild(empty);
+                } else {
+                    matches.slice(0, 200).forEach(option => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'dropdown-option';
+                        button.setAttribute('role', 'option');
+                        button.textContent = getLabel(option);
+                        button.addEventListener('mousedown', event => event.preventDefault());
+                        button.addEventListener('click', () => {
+                            onSelect(option);
+                            closeDropdown(input, optionsElement);
+                        });
+                        optionsElement.appendChild(button);
+                    });
+                }
+
+                optionsElement.classList.remove('hidden');
+                input.setAttribute('aria-expanded', 'true');
+            };
+
+            input.addEventListener('focus', render);
+            input.addEventListener('click', render);
+            input.addEventListener('input', () => {
+                onQuery(input.value);
+                render();
+            });
+            input.addEventListener('blur', () => {
+                window.setTimeout(() => closeDropdown(input, optionsElement), 100);
+            });
+            input.addEventListener('keydown', event => {
+                const optionButtons = Array.from(optionsElement.querySelectorAll('.dropdown-option'));
+                if (event.key === 'Escape') {
+                    closeDropdown(input, optionsElement);
+                    return;
+                }
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (optionsElement.classList.contains('hidden')) {
+                        render();
+                        return;
+                    }
+                    if (optionButtons.length === 0) return;
+                    activeIndex = event.key === 'ArrowDown'
+                        ? (activeIndex + 1) % optionButtons.length
+                        : (activeIndex - 1 + optionButtons.length) % optionButtons.length;
+                    optionButtons.forEach((button, index) => button.classList.toggle('active', index === activeIndex));
+                    optionButtons[activeIndex].scrollIntoView({ block: 'nearest' });
+                } else if (event.key === 'Enter' && activeIndex >= 0 && optionButtons[activeIndex]) {
+                    event.preventDefault();
+                    optionButtons[activeIndex].click();
+                }
+            });
+        }
+
+        function resetBranches(message) {
+            branches = [];
+            selectedSourceBranch = '';
+            selectedTargetBranch = '';
+            elements.sourceBranch.value = '';
+            elements.targetBranch.value = '';
+            elements.sourceBranch.disabled = true;
+            elements.targetBranch.disabled = true;
+            elements.sourceBranch.placeholder = message;
+            elements.targetBranch.placeholder = message;
+            elements.sourceBranchOptions.replaceChildren();
+            elements.targetBranchOptions.replaceChildren();
+            closeDropdown(elements.sourceBranch, elements.sourceBranchOptions);
+            closeDropdown(elements.targetBranch, elements.targetBranchOptions);
+        }
+
+        function selectRepository(repository) {
+            elements.repository.value = repository.id;
+            elements.repositorySearch.value = repository.name;
+            resetBranches('Loading branches...');
+            hideError();
+            vscode.postMessage({ command: 'loadBranches', repositoryId: repository.id });
+        }
+
+        function selectBranch(kind, branch) {
+            if (kind === 'source') {
+                selectedSourceBranch = branch;
+                elements.sourceBranch.value = branch;
+            } else {
+                selectedTargetBranch = branch;
+                elements.targetBranch.value = branch;
+            }
+        }
+
+        configureCombobox(
+            elements.repositorySearch,
+            elements.repositoryOptions,
+            () => repositories,
+            repository => repository.name,
+            selectRepository,
+            value => {
+                const exact = repositories.find(repository => repository.name.toLowerCase() === value.trim().toLowerCase());
+                if (exact) {
+                    if (elements.repository.value !== exact.id) selectRepository(exact);
+                } else if (elements.repository.value) {
+                    elements.repository.value = '';
+                    resetBranches('Select a repository first');
+                }
+            }
+        );
+
+        configureCombobox(
+            elements.sourceBranch,
+            elements.sourceBranchOptions,
+            () => branches,
+            branch => branch,
+            branch => selectBranch('source', branch),
+            value => {
+                const exact = branches.find(branch => branch.toLowerCase() === value.trim().toLowerCase());
+                selectedSourceBranch = exact || '';
+            }
+        );
+
+        configureCombobox(
+            elements.targetBranch,
+            elements.targetBranchOptions,
+            () => branches,
+            branch => branch,
+            branch => selectBranch('target', branch),
+            value => {
+                const exact = branches.find(branch => branch.toLowerCase() === value.trim().toLowerCase());
+                selectedTargetBranch = exact || '';
+            }
+        );
         
         // Event Listeners
         elements.settingsBtn.addEventListener('click', () => {
@@ -976,8 +1251,12 @@ export class PRCreatorPanel {
         });
         
         elements.refreshRepos.addEventListener('click', () => {
-            elements.repository.innerHTML = '<option value="">Loading...</option>';
-            elements.repository.disabled = true;
+            repositories = [];
+            elements.repository.value = '';
+            elements.repositorySearch.value = '';
+            elements.repositorySearch.placeholder = 'Loading repositories...';
+            elements.repositorySearch.disabled = true;
+            resetBranches('Select a repository first');
             vscode.postMessage({ command: 'loadRepositories' });
         });
         
@@ -990,9 +1269,9 @@ export class PRCreatorPanel {
             
             vscode.postMessage({
                 command: 'generateAI',
-                branch: elements.sourceBranch.value || 'feature',
-                repo: elements.repository.options[elements.repository.selectedIndex]?.text || 'repository',
-                targetBranch: elements.targetBranch.value || 'main'
+                branch: selectedSourceBranch || 'feature',
+                repo: repositories.find(repository => repository.id === elements.repository.value)?.name || 'repository',
+                targetBranch: selectedTargetBranch || 'main'
             });
         });
         
@@ -1004,12 +1283,16 @@ export class PRCreatorPanel {
                 showError('Please select a repository');
                 return;
             }
-            if (!elements.sourceBranch.value.trim()) {
-                showError('Please enter a source branch');
+            if (!selectedSourceBranch) {
+                showError('Please select a source branch');
                 return;
             }
-            if (!elements.targetBranch.value.trim()) {
-                showError('Please enter a target branch');
+            if (!selectedTargetBranch) {
+                showError('Please select a target branch');
+                return;
+            }
+            if (selectedSourceBranch === selectedTargetBranch) {
+                showError('Source and target branches must be different');
                 return;
             }
             if (!elements.prTitle.value.trim()) {
@@ -1027,8 +1310,8 @@ export class PRCreatorPanel {
                 command: 'createPR',
                 data: {
                     repositoryId: elements.repository.value,
-                    sourceBranch: elements.sourceBranch.value.trim(),
-                    targetBranch: elements.targetBranch.value.trim(),
+                    sourceBranch: selectedSourceBranch,
+                    targetBranch: selectedTargetBranch,
                     title: elements.prTitle.value.trim(),
                     description: elements.prDescription.value.trim(),
                     workItems: elements.workItems.value.trim(),
@@ -1148,17 +1431,14 @@ export class PRCreatorPanel {
             switch (msg.command) {
                 case 'initialData':
                     const data = msg.data;
+                    currentBranch = data.currentBranch || '';
+                    currentRepo = data.currentRepo || '';
                     
                     // Status indicators
                     elements.azureStatus.className = 'status-dot ' + (data.hasAzurePAT ? 'ok' : 'warning');
                     elements.aiStatus.className = 'status-dot ' + (data.hasAIKey ? 'ok' : 'warning');
                     elements.aiProviderLabel.textContent = data.aiProviderLabel || 'AI Provider';
                     elements.currentBranchDisplay.textContent = data.currentBranch || 'Not detected';
-                    
-                    // Pre-fill branch
-                    if (data.currentBranch) {
-                        elements.sourceBranch.value = data.currentBranch;
-                    }
                     
                     // Render history
                     renderPRHistory(data.prHistory);
@@ -1167,16 +1447,61 @@ export class PRCreatorPanel {
                     if (data.hasAzurePAT) {
                         vscode.postMessage({ command: 'loadRepositories' });
                     } else {
-                        elements.repository.innerHTML = '<option value="">Configure Azure DevOps first</option>';
+                        elements.repositorySearch.placeholder = 'Configure Azure DevOps first';
                     }
                     break;
                     
                 case 'repositoriesLoaded':
-                    elements.repository.disabled = false;
-                    elements.repository.innerHTML = '<option value="">Select repository...</option>' +
-                        msg.data.repositories.map(r => 
-                            \`<option value="\${r.id}" \${r.id === msg.data.selectedRepoId ? 'selected' : ''}>\${escapeHtml(r.name)}</option>\`
-                        ).join('');
+                    repositories = msg.data.repositories || [];
+                    elements.repositorySearch.disabled = false;
+                    elements.repositorySearch.placeholder = repositories.length > 0
+                        ? 'Search and select a repository'
+                        : 'No repositories found';
+
+                    const selectedRepository = repositories.find(repository => repository.id === msg.data.selectedRepoId);
+                    if (selectedRepository) {
+                        selectRepository(selectedRepository);
+                    } else {
+                        elements.repository.value = '';
+                        elements.repositorySearch.value = '';
+                        resetBranches('Select a repository first');
+                    }
+                    break;
+
+                case 'branchesLoaded':
+                    if (msg.data.repositoryId !== elements.repository.value) break;
+
+                    branches = msg.data.branches || [];
+                    elements.sourceBranch.disabled = branches.length === 0;
+                    elements.targetBranch.disabled = branches.length === 0;
+                    elements.sourceBranch.placeholder = branches.length > 0
+                        ? 'Search and select a source branch'
+                        : 'No branches found';
+                    elements.targetBranch.placeholder = branches.length > 0
+                        ? 'Search and select a target branch'
+                        : 'No branches found';
+
+                    const selectedRepo = repositories.find(repository => repository.id === elements.repository.value);
+                    const detectedSource = selectedRepo?.name === currentRepo && branches.includes(currentBranch)
+                        ? currentBranch
+                        : '';
+                    const defaultTarget = branches.includes(msg.data.defaultBranch)
+                        ? msg.data.defaultBranch
+                        : branches.includes('main')
+                            ? 'main'
+                            : branches.includes('master')
+                                ? 'master'
+                                : '';
+
+                    if (detectedSource) selectBranch('source', detectedSource);
+                    if (defaultTarget) selectBranch('target', defaultTarget);
+                    if (branches.length === 0) showError('No branches were found for the selected repository.');
+                    break;
+
+                case 'branchesLoadError':
+                    if (msg.repositoryId !== elements.repository.value) break;
+                    resetBranches('Unable to load branches');
+                    showError(msg.message);
                     break;
                     
                 case 'aiGenerated':
