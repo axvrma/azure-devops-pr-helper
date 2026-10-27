@@ -1,3 +1,4 @@
+import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import {
@@ -14,6 +15,7 @@ import {
 import { ExtensionServices, SettingsData, WebviewMessage } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS } from '../utils/constants';
 import { getNonce, normalizeBaseUrl } from '../utils/helpers';
+import { safeOrganizationUrl } from '../branchFlow/domain/model';
 
 export class SettingsPanel {
     public static currentPanel: SettingsPanel | undefined;
@@ -45,6 +47,7 @@ export class SettingsPanel {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
+                localResourceRoots: [uiResourceRoot(services.context)],
             }
         );
 
@@ -68,6 +71,8 @@ export class SettingsPanel {
     private setupMessageHandler(): void {
         this.panel.webview.onDidReceiveMessage(
             async (message: WebviewMessage) => {
+                if (!message || typeof message !== 'object' || typeof message.command !== 'string') { return; }
+                try {
                 switch (message.command) {
                     case 'getSettings':
                         await this.sendSettings();
@@ -131,6 +136,7 @@ export class SettingsPanel {
                         await this.testAIConnection();
                         break;
                 }
+                } catch { this.postMessage({ command: 'saveError', error: 'Settings action could not complete. Retry after checking credentials and configuration.' }); }
             },
             null,
             this.disposables
@@ -149,10 +155,7 @@ export class SettingsPanel {
         switch (key) {
             case CONFIG_KEYS.ORG_HOST: {
                 const normalized = normalizeBaseUrl(String(value).trim()) || '';
-                if (!/^https?:\/\/[^/]+/.test(normalized)) {
-                    return 'error:Organization URL must start with http:// or https://';
-                }
-                return normalized;
+                try { return safeOrganizationUrl(normalized); } catch { return 'error:Use an HTTPS organization URL without credentials, query or fragment.'; }
             }
             case CONFIG_KEYS.PROJECT: {
                 const project = String(value).trim();
@@ -305,7 +308,7 @@ export class SettingsPanel {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings</title>
     <style>
@@ -656,10 +659,11 @@ export class SettingsPanel {
             }
         }
     </style>
+    <link rel="stylesheet" href="${uiStylesUri(this.panel.webview, this.services.context)}">
 </head>
 <body>
     <h1>
-        <span class="icon">⚙️</span>
+        ${uiIcon('settings')}
         Azure DevOps PR Helper
     </h1>
     <p class="subtitle">Configure Azure DevOps and your preferred AI provider in one place.</p>
@@ -667,7 +671,7 @@ export class SettingsPanel {
     <!-- Azure DevOps Section -->
     <div class="section">
         <div class="section-header">
-            <span class="icon">🔗</span>
+            ${uiIcon('external')}
             <h2>Azure DevOps Connection</h2>
             <span id="azure-status" class="status-badge status-not-configured">Not Configured</span>
         </div>
@@ -722,7 +726,7 @@ export class SettingsPanel {
     <!-- AI Provider Section -->
     <div class="section">
         <div class="section-header">
-            <span class="icon">🤖</span>
+            ${uiIcon('spark')}
             <h2>AI Provider Integration</h2>
             <span id="ai-status" class="status-badge status-not-configured">Not Configured</span>
         </div>
@@ -789,7 +793,7 @@ export class SettingsPanel {
     <!-- AI Behavior Section -->
     <div class="section">
         <div class="section-header">
-            <span class="icon">✨</span>
+            ${uiIcon('spark')}
             <h2>AI Behavior</h2>
         </div>
         
@@ -830,7 +834,7 @@ export class SettingsPanel {
     <!-- Privacy Section -->
     <div class="section">
         <div class="section-header">
-            <span class="icon">🔒</span>
+            ${uiIcon('shield')}
             <h2>Privacy</h2>
         </div>
         

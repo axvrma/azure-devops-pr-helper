@@ -1,172 +1,69 @@
 # Azure DevOps PR Helper
 
-A VS Code extension to streamline creating Pull Requests on Azure DevOps with AI-powered title and description generation using Anthropic, Google Gemini, or OpenAI.
+Create Azure DevOps pull requests and plan branch integration visually inside VS Code. **Branch Flow Manager works without AI, a backend, or a paid service.** Optional Anthropic, Gemini and OpenAI assistance remains available in the existing PR Creator.
 
-## Features
+## Branch Flow Manager
 
-- **Create PRs directly from VS Code** - No need to switch to the browser
-- **AI-Powered Suggestions** - Anthropic, Gemini, or OpenAI generates PR titles and descriptions from branch, commit, and diff context
-- **Work Item Linking** - Link PRs to Azure DevOps work items
-- **Secure Credential Storage** - PAT and API keys stored using VS Code SecretStorage
-- **Workspace-Aware Auto-Detection** - Automatically detects the branch and repository from the active VS Code workspace folder
-- **Comprehensive Settings** - All configuration in one place
+Run **Azure DevOps: Open Branch Flow**, or use **New graph** in the sidebar’s collapsible **Branch Flow** section. That section also lists recently opened graphs; **PR Helper** has its own collapsible section. New graphs reuse the PR Creator’s selected project and repository. Change the context at any time using the repository control in the graph toolbar. If no selection is available, choose an HTTPS organization, project and repository using the native picker. Configure your PAT in **Azure DevOps: Open Settings** first.
 
-## Installation
+1. Search remote branches and drag them onto the canvas, or use each branch's **+** button.
+2. Connect source A to target B to plan propagation **A → B**. Choose Merge / PR, Rebase target onto source, or unverified Cherry-pick. Forks, convergences and disconnected components are supported; cycles and cross-repository connections are rejected.
+3. Use **Analyze All** or select a relationship and **Revalidate**. Inspect exact commit SHAs, evidence, outstanding source commits, matching active PRs, policy evaluations and conflict details. The overview suggests dependency order and downstream revalidation.
+4. For a merge relationship, **Create PR…** opens the existing editable PR Creator with repository and branches prefilled. An existing active PR opens instead. Only explicit submission creates a remote PR; Branch Flow never merges, pushes or performs remote rebases.
+5. Save locally as `.branchflow.json`. Saved graphs automatically revalidate on open and when revealed. Refresh manually or opt into polling. Native VS Code dirty-close warnings and backups protect unsaved work; external edits produce a protected-save warning with Reload and Save As recovery.
 
-1. Open VS Code and go to the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
-2. Search for `Azure DevOps PR Helper` and install it.
-*(Alternatively, install from a `.vsix` file using the "Install from VSIX..." option in the Extensions menu).*
+The toolbar’s **Actions** menu contains New, Save, Save As, Open, Recent, Import/Export JSON, Refresh, Analyze All, Auto Layout, Fit View, Undo and Redo. Connection mode, snap, repository and Settings share the same compact toolbar. First Save opens the native filename dialog; Save As always lets you choose a new name. The canvas supports multiple selection, node/edge deletion, context menus, keyboard movement, zoom/pan, snap-to-grid and a minimap. Scroll pans vertically, Shift+scroll pans horizontally, and Ctrl/Cmd+scroll or pinch zooms. New branches are placed without overlap. Action toasts confirm results; the inspector’s **Errors** section retains operation, time and details after notifications disappear. A renderer recovery panel preserves access to the editor and save actions if the canvas fails. Use **Connect branches with keyboard** in the inspector for an alternative to dragging connection handles. Delete/Backspace removes the selection; Ctrl/Cmd+Z and redo shortcuts restore graph edits. Branch search is debounced and displays 100 results per page. VS Code light/dark/high-contrast colors and text status labels are supported.
 
-## How to Use
+| Status | Meaning |
+| --- | --- |
+| SYNCED · green | Current source ancestry is positively verified in the current target |
+| ACTION REQUIRED · yellow | Integration remains; the explanation states whether a merge/rebase was actually simulated |
+| CONFLICT · red | Actual local simulation or exact-head Azure PR merge conflict evidence exists |
+| PR ACTIVE · blue | Matching active PR; policies and completion may still block it |
+| DRIFTED · orange | Saved evidence is stale because heads or dependencies changed |
+| ANALYZING | Validation is in progress; Cancel stops obsolete work |
+| UNKNOWN | Inconclusive evidence, missing refs or unavailable simulation |
+| ERROR | An operation failed; this is not a Git conflict |
 
-### 1. Initial Setup
-Before creating your first pull request, configure your connection:
-1. Click the **Azure DevOps PR** icon in the VS Code Activity Bar to open the sidebar, or run the command `Azure DevOps: Open Settings`.
-2. Under **Azure DevOps Connection**, enter your Organization URL, Project Name, and a Personal Access Token (PAT). Click **Save**.
-3. *(Optional)* Under **AI Provider Integration**, choose Anthropic, Gemini, or OpenAI and enter the provider API key to enable AI-powered PR titles and descriptions.
+A completed or squash-merged PR does not automatically prove current source ancestry. Cherry-pick is explicitly unverified in V1. Rebase A → B means replay B-only commits onto A in a temporary repository. A clean merge is not proof of a clean rebase. Local simulation requires a matching trusted, complete clone with the exact Azure objects already present; fetch manually when necessary. The extension leaves your checkout, index, branches and dirty files alone. Without a suitable clone, cloud merge planning still works and exact rebase simulation remains UNKNOWN. See [operation semantics and file format](docs/branch-flow/semantics-and-format.md).
 
-### 2. Creating a Pull Request
-Once configured, you have two ways to create pull requests:
+## PR Creator and optional AI
 
-**Option A: The Sidebar (Quick Action)**
-1. Open the **Azure DevOps PR** view in the Activity Bar.
-2. The extension automatically detects your current branch, repository, and active changes.
-3. If an AI provider is configured, click **Generate Using AI** to draft a context-aware title and description from your commits and diff.
-4. Click **Create Pull Request**.
+Run **Azure DevOps: Create Pull Request** or **Raise PR**. Select a repository and editable source/target branches, enter a title/description manually, and optionally link comma-separated work-item IDs. **AI** can suggest content using local Git commits and diff context when you configure a provider/key. Manual PR creation and all Branch Flow operations work without AI. PR history retains ten locally stored entries; the last PR URL can be copied from the command palette.
 
-**Option B: The Full Webview (Detailed View)**
-1. Run the command `Azure DevOps: Create Pull Request` from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-2. Select your target branch, adjust the AI-generated description, and manually link Azure DevOps Work Items if needed.
-3. Click **Create** to instantly open the PR on Azure DevOps.
+Set up provider, model, token limit and temperature in Settings. AI generation intentionally sends the chosen commit/diff context to that provider. No AI service is called by Branch Flow analysis. Provider model availability and live Azure permissions depend on your account.
 
-### 3. AI Generation
-When an AI provider is configured, the extension can analyze your `git diff` and local commit history to write a structured, descriptive summary of your changes.
+## Configuration and requirements
 
-## Configuration
+- VS Code **1.60.0+**; Git is needed for workspace hints and optional local analysis. Git 2.38+ is recommended for simulation.
+- Azure DevOps HTTPS organization URL, project and PAT. HTTPS on-premises organization/collection URLs are accepted; REST version must match the server. HTTP URLs and embedded URL credentials are refused.
+- Code Read permission for analysis; Code Read/Write for explicit PR creation. Work Items Read/Write is needed only for work-item linking.
+- Optional provider API key for Anthropic, Google Gemini or OpenAI.
 
-Open the settings panel via Command Palette: `Azure DevOps: Open Settings`
+| VS Code setting | Default / purpose |
+| --- | --- |
+| `azureDevopsPr.orgHost` | Organization URL configured in Settings |
+| `azureDevopsPr.project` | Project configured in Settings |
+| `azureDevopsPr.apiVersion` | `7.1` |
+| `azureDevopsPr.branchFlow.localAnalysis` | `true`; disabled in untrusted workspaces regardless of setting |
+| `azureDevopsPr.branchFlow.pollIntervalSeconds` | `0`, disabled; positive intervals have a 30-second minimum |
+| `azureDevopsPr.useAI` | `true`; existing optional AI behavior |
+| `azureDevopsPr.generateDescription` | `true`; optional AI description |
+| `azureDevopsPr.autoAcceptAI` | `false`; existing behavior setting retained |
+| `azureDevopsPr.aiProvider` / `aiModel` | Provider and model; blank model uses provider default |
+| `azureDevopsPr.aiMaxTokens` / `aiTemperature` | `1024` / `0.3` |
+| `azureDevopsPr.enableTelemetry` | `true`; also respects VS Code's telemetry switch |
 
-### Azure DevOps Settings
+If a graph names another organization, credentials are withheld until you explicitly select/authorize that context. A deleted/renamed branch should be replaced in the graph. A shallow/partial clone, missing objects or simulation failure cannot produce a clean rebase claim. See the in-panel recovery explanation and [verification guide](docs/branch-flow/release-verification.md).
 
-| Setting | Description |
-|---------|-------------|
-| Organization URL | Your Azure DevOps org URL (e.g., `https://dev.azure.com/your-org`) |
-| Project | Project name containing your repositories |
-| PAT | Personal Access Token with Code and Work Items permissions |
-| API Version | Azure DevOps REST API version (default: 7.1) |
+## Security and privacy
 
-### AI Provider Settings
+PATs and provider keys stay in VS Code SecretStorage and the extension host. Webviews receive presence flags, never stored secrets. Branch Flow uses bundled local scripts/styles with a nonce CSP and no network connections. All filesystem, authenticated HTTP and Git operations run in the host. Graph imports and messages have runtime schemas and limits; Git uses argument arrays. API logs and errors exclude credentials and raw response bodies.
 
-| Setting | Description |
-|---------|-------------|
-| Provider | Anthropic, Google Gemini, or OpenAI |
-| API Key | Provider API key stored securely in VS Code SecretStorage |
-| Model | Provider model id. Leave blank in VS Code settings to use the provider default |
-| Max Tokens | Maximum response length (default: 1024) |
-| Temperature | Creativity level 0-2 (default: 0.3) |
+Branch Flow adds no telemetry events. Existing PostHog usage events are limited by an allowlist to aggregate counts, booleans, provider/source categories and fixed failure categories. Branch/repository/organization names, SHAs, graph/source/diff contents, credentials and unrestricted errors are dropped. A pseudonymous VS Code machine ID is used to count installations. Disable usage analytics in extension Settings or disable VS Code telemetry. Saved graphs, backups, history and Recent paths are local user data and can contain private metadata; protect them accordingly. [Security review](docs/branch-flow/security-review.md).
 
-### AI Behavior Toggles
+## Development and release
 
-| Setting | Description |
-|---------|-------------|
-| Enable AI Suggestions | Use the selected AI provider to generate PR titles/descriptions |
-| Generate Description | Also generate description (not just title) |
-| Auto-Accept AI | Skip confirmation and use AI content directly |
+Build/test tooling requires Node **22.12+**; extension users do not need to install Node. Run `npm ci`, `npm run verify`, `npm run test:browser` (after `npx playwright install chromium`), and `npm run test:extension`. Package locally with `npm run vscode:package`; this does not publish. The production host/browser bundles exclude development dependencies. [Release checks, budgets and manual Azure validation](docs/branch-flow/release-verification.md) · [existing-system audit](docs/architecture/existing-system.md) · [implementation checklist](docs/branch-flow/implementation-checklist.md).
 
-### Privacy Settings
-
-| Setting | Description |
-|---------|-------------|
-| Enable Analytics | Send anonymous usage data to help improve the extension |
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `Azure DevOps: Raise PR` | Create a new pull request |
-| `Azure DevOps: Copy Last PR URL` | Copy the last created PR URL |
-| `Azure DevOps: Clear Azure DevOps PAT` | Remove stored PAT |
-| `Azure DevOps: Open Settings` | Open the settings panel |
-| `Azure DevOps: Generate PR Title with AI` | Generate a title using AI |
-
-## Project Structure
-
-```
-src/
-├── extension.ts          # Entry point
-├── api/
-│   ├── azureDevOps.ts    # Azure DevOps API client
-│   └── ai.ts             # Multi-provider AI client
-├── commands/
-│   ├── raisePR.ts        # PR creation command
-│   ├── copyUrl.ts        # Copy URL command
-│   ├── clearPAT.ts       # Clear credentials command
-│   ├── generateTitle.ts  # AI title generation
-│   └── index.ts          # Command exports
-├── webviews/
-│   ├── settingsPanel.ts  # Settings webview
-│   ├── sidebarProvider.ts # Sidebar webview
-│   └── index.ts          # Webview exports
-├── utils/
-│   ├── constants.ts      # Configuration keys and defaults
-│   ├── git.ts            # Git utilities
-│   ├── helpers.ts        # General utilities
-│   └── services.ts       # Extension services wrapper
-└── types/
-    └── index.ts          # TypeScript interfaces
-```
-
-## Security
-
-- Azure DevOps PAT and AI provider API keys are stored securely using VS Code's SecretStorage API
-- Credentials are never exposed in logs or configuration files
-- CSP headers protect webviews from XSS attacks
-
-## Analytics & Privacy
-
-This extension collects anonymous usage analytics to help improve the product. We use [PostHog](https://posthog.com) for analytics.
-
-### What We Track
-
-| Event | Description |
-|-------|-------------|
-| Extension activated | When the extension starts |
-| PR created/failed | Success and failure rates for PR creation |
-| AI generation used | When AI title/description generation is used |
-| Settings changed | Which settings are being configured |
-| Connection tests | Success/failure of Azure DevOps and AI provider connections |
-
-### What We DON'T Track
-
-- **No personal information** - We never collect names, emails, or identifiable data
-- **No code or content** - We never see your PR titles, descriptions, branch names, or code
-- **No repository data** - We don't collect repository names or project details
-- **No credentials** - Your PAT and API keys are never transmitted
-
-### Privacy Controls
-
-Analytics respects your preferences:
-
-1. **VS Code Telemetry Setting** - If you've disabled telemetry in VS Code settings, we won't collect any data
-2. **Extension Setting** - You can disable analytics specifically for this extension in Settings → Privacy → Enable Analytics
-
-### Anonymous User ID
-
-We use VS Code's built-in `machineId` (already anonymized by VS Code) to count unique users. This ID cannot be traced back to you.
-
-## Requirements
-
-- VS Code 1.60.0 or higher
-- Git repository connected to Azure DevOps
-- Azure DevOps PAT with:
-  - Code (Read & Write)
-  - Work Items (Read & Write)
-- Anthropic, Gemini, or OpenAI API key (optional, for AI features)
-
-## License
-
-MIT
-
-## Author
-
-Built by Abhishek Verma
+MIT · Built by Abhishek Verma. Bundled libraries retain their licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

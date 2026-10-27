@@ -5,6 +5,11 @@ import { ExtensionServices, PRHistoryItem, WebviewMessage } from '../types';
 import { COMMANDS, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
 import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
 import { getNonce } from '../utils/helpers';
+import { safeAzureLink } from '../utils/urls';
+import { configuredContext } from '../services/pullRequestService';
+import { onWorkspaceContextChanged, recentGraphs, selectedRepository } from '../services/workspaceContext';
+import * as path from 'path';
+import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'prHelperSidebarView';
@@ -20,11 +25,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     ): void {
         webviewView.webview.options = {
             enableScripts: true,
+            localResourceRoots: [uiResourceRoot(this.services.context)],
         };
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
         this.setupMessageHandler(webviewView);
 
+        const subscription = onWorkspaceContextChanged(() => { if (webviewView.visible) { void this.sendContext(webviewView); } });
+        webviewView.onDidDispose(() => subscription.dispose());
         webviewView.onDidChangeVisibility(() => {
             if (webviewView.visible) {
                 void this.sendContext(webviewView);
@@ -34,6 +42,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     private setupMessageHandler(webviewView: vscode.WebviewView): void {
         webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
+            if (!message || typeof message.command !== 'string') { return; }
+            try {
             switch (message.command) {
                 case 'getContext':
                     await this.sendContext(webviewView);
@@ -41,6 +51,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                 case 'openSettings':
                     await vscode.commands.executeCommand(COMMANDS.OPEN_SETTINGS);
+                    break;
+
+                case 'openBranchFlow':
+                    await vscode.commands.executeCommand('extension.openBranchFlow');
+                    break;
+
+                case 'openGraph': {
+                    const index = message.data?.index;
+                    if (typeof index !== 'number' || !Number.isInteger(index)) { return; }
+                    const file = recentGraphs(this.services)[index];
+                    if (file) { await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), 'azureDevopsPr.branchFlow'); }
+                    break;
+                }
+
+                case 'openGraphPicker':
+                    await vscode.commands.executeCommand('extension.openBranchFlowFile');
                     break;
 
                 case 'openPRCreator':
@@ -59,7 +85,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                 case 'openUrl':
                     if (message.url) {
-                        await vscode.env.openExternal(vscode.Uri.parse(message.url));
+                        const url = safeAzureLink(message.url, configuredContext(this.services).organizationUrl);
+                        if (url) { await vscode.env.openExternal(vscode.Uri.parse(url)); }
                     }
                     break;
 
@@ -68,6 +95,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     webviewView.webview.postMessage({ command: 'historyUpdated', data: [] });
                     break;
             }
+            } catch { vscode.window.showErrorMessage('PR Helper action failed. Check Settings and retry.'); }
         });
     }
 
@@ -75,7 +103,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const hasAzure = !!(await this.services.getSecret(SECRET_KEYS.AZURE_PAT));
         const { client, provider } = await createAIClientFromServices(this.services);
         const branch = getCurrentBranch() ?? '';
-        const repo = getCurrentRepoName() ?? '';
+        const repo = selectedRepository(this.services)?.repositoryName ?? getCurrentRepoName() ?? '';
         const prHistory = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
 
         await webviewView.webview.postMessage({
@@ -87,6 +115,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 branch,
                 repo,
                 prHistory,
+                recentGraphs: recentGraphs(this.services).map(file => ({ name: path.basename(file), path: file })),
             },
         });
     }
@@ -100,326 +129,72 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PR Helper</title>
-    <style>
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: var(--vscode-font-family);
-            padding: 12px;
-            color: var(--vscode-foreground);
-            font-size: 13px;
-        }
-
-        .context-info {
-            background: var(--vscode-textBlockQuote-background);
-            border-radius: 4px;
-            padding: 10px;
-            margin-bottom: 12px;
-        }
-
-        .context-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 4px;
-        }
-
-        .context-row:last-child { margin-bottom: 0; }
-
-        .context-label {
-            color: var(--vscode-descriptionForeground);
-            font-size: 11px;
-            min-width: 50px;
-        }
-
-        .context-value {
-            font-weight: 500;
-            font-size: 12px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-
-        .status-ok { background: var(--vscode-testing-iconPassed); }
-        .status-warning { background: var(--vscode-inputValidation-warningBackground); }
-
-        button {
-            padding: 6px 10px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-        }
-
-        button:hover { opacity: 0.9; }
-
-        .btn-primary {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .btn-secondary {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-        }
-
-        .quick-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .quick-action {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 10px;
-            background: var(--vscode-list-hoverBackground);
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .quick-action:hover { background: var(--vscode-list-activeSelectionBackground); }
-
-        .quick-action.primary-action {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .quick-action.primary-action:hover { opacity: 0.9; }
-
-        .quick-action.primary-action .quick-action-desc {
-            color: var(--vscode-button-foreground);
-            opacity: 0.8;
-        }
-
-        .quick-action-icon { font-size: 16px; }
-        .quick-action-text { flex: 1; min-width: 0; }
-        .quick-action-title { font-weight: 500; }
-
-        .quick-action-desc {
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .warning-banner {
-            background: var(--vscode-inputValidation-warningBackground);
-            color: var(--vscode-inputValidation-warningForeground);
-            padding: 8px 10px;
-            border-radius: 4px;
-            margin-bottom: 12px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .warning-banner button {
-            margin-left: auto;
-            background: transparent;
-            border: 1px solid currentColor;
-            color: inherit;
-            padding: 4px 8px;
-            font-size: 11px;
-        }
-
-        .history-section {
-            margin-top: 16px;
-            padding-top: 14px;
-            border-top: 1px solid var(--vscode-panel-border);
-        }
-
-        .history-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .history-title {
-            margin: 0;
-            font-size: 14px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .pr-card {
-            background: var(--vscode-textBlockQuote-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 8px;
-        }
-
-        .pr-card:hover { border-color: var(--vscode-focusBorder); }
-        .pr-card:last-child { margin-bottom: 0; }
-
-        .pr-card-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 8px;
-            margin-bottom: 6px;
-        }
-
-        .pr-card-title {
-            min-width: 0;
-            font-size: 12px;
-            font-weight: 600;
-            line-height: 1.35;
-            word-break: break-word;
-        }
-
-        .pr-card-id {
-            color: var(--vscode-descriptionForeground);
-            font-size: 11px;
-            white-space: nowrap;
-        }
-
-        .pr-card-description {
-            color: var(--vscode-descriptionForeground);
-            font-size: 11px;
-            line-height: 1.35;
-            margin-bottom: 8px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .pr-card-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            margin-bottom: 8px;
-        }
-
-        .pr-card-tag {
-            max-width: 100%;
-            padding: 2px 6px;
-            border-radius: 10px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            font-size: 10px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .pr-card-tag.branch {
-            background: var(--vscode-textLink-foreground);
-            color: var(--vscode-button-foreground);
-        }
-
-        .pr-card-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .pr-card-actions button { flex: 1; }
-
-        .empty-state {
-            padding: 24px 10px;
-            text-align: center;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .empty-state-icon {
-            font-size: 30px;
-            margin-bottom: 8px;
-        }
-
-        .empty-state-text {
-            font-size: 12px;
-            line-height: 1.4;
-        }
-
-        .toast {
-            position: fixed;
-            right: 12px;
-            bottom: 12px;
-            max-width: calc(100% - 24px);
-            padding: 8px 12px;
-            border-radius: 4px;
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            font-size: 12px;
-            z-index: 10;
-        }
-
-        .hidden { display: none !important; }
-    </style>
+    <link rel="stylesheet" href="${uiStylesUri(webview, this.services.context)}">
 </head>
-<body>
+<body class="prh-sidebar">
+    <details class="drawer-section" id="prHelperSection" open>
+    <summary>PR Helper</summary>
+    <div class="drawer-content">
     <div class="context-info">
         <div class="context-row">
-            <span class="context-label">Branch:</span>
+            <span class="context-label">Branch</span>
             <span class="context-value" id="branchName">Detecting...</span>
         </div>
         <div class="context-row">
-            <span class="context-label">Repo:</span>
+            <span class="context-label">Repository</span>
             <span class="context-value" id="repoName">Detecting...</span>
         </div>
-        <div class="context-row">
-            <span class="status-dot" id="azureStatus"></span>
-            <span class="context-label">Azure</span>
-            <span class="status-dot" id="aiStatus"></span>
-            <span class="context-label" id="aiStatusLabel">AI</span>
+        <div class="connection-statuses">
+            <span class="connection-status"><span class="status-dot" id="azureStatus"></span><span>Azure</span><span class="connection-state" id="azureState">Checking</span></span>
+            <span class="connection-status"><span class="status-dot" id="aiStatus"></span><span id="aiStatusLabel">AI</span><span class="connection-state" id="aiState">Optional</span></span>
         </div>
     </div>
 
     <div id="warningBanner" class="warning-banner hidden">
-        <span>⚠️</span>
-        <span>Azure PAT not configured</span>
+        <span>Azure connection needs a PAT.</span>
         <button id="openSettingsFromWarning" type="button">Settings</button>
     </div>
 
     <div class="quick-actions">
-        <div class="quick-action primary-action" id="openPRCreatorAction">
-            <span class="quick-action-icon">🚀</span>
-            <div class="quick-action-text">
-                <div class="quick-action-title">Create Pull Request</div>
-                <div class="quick-action-desc">Open full PR creation page</div>
-            </div>
-        </div>
+        <button type="button" class="btn-primary primary-action" id="openPRCreatorAction">
+            ${uiIcon('pullRequest')}<span>Create pull request</span>
+        </button>
     </div>
 
     <section class="history-section" aria-labelledby="recentPRsTitle">
         <div class="history-header">
-            <h2 class="history-title" id="recentPRsTitle"><span>📋</span> Recent PRs</h2>
-            <button class="btn-secondary" id="clearHistoryBtn" type="button">Clear All</button>
+            <h2 class="history-title" id="recentPRsTitle">Recent pull requests <span class="list-count" id="prCount">0</span></h2>
+            <button class="btn-quiet" id="clearHistoryBtn" type="button" disabled title="Clear pull request history">Clear</button>
         </div>
         <div id="prHistoryList">
             <div class="empty-state">
-                <div class="empty-state-icon">📭</div>
-                <div class="empty-state-text">No PRs created yet.<br>Create your first PR!</div>
+                <div class="empty-state-text"><strong>No pull requests yet</strong>Created pull requests will appear here.</div>
             </div>
         </div>
     </section>
 
+    </div></details>
+    <details class="drawer-section" id="branchFlowSection" open>
+        <summary>Branch Flow</summary>
+        <div class="drawer-content">
+            <div class="flow-actions"><button id="openBranchFlow" class="btn-secondary" type="button">${uiIcon('plus')}New graph</button><button id="openGraphPicker" class="btn-secondary" type="button">${uiIcon('folder')}Open graph</button></div>
+            <div class="list-heading"><h2 class="history-title">Recent graphs</h2><span class="list-count" id="graphCount">0</span></div>
+            <ul id="recentGraphs" aria-label="Recently opened Branch Flow files"></ul>
+        </div>
+    </details>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
+        document.getElementById('openGraphPicker').addEventListener('click', () => vscode.postMessage({ command: 'openGraphPicker' }));
+        const drawerState = vscode.getState?.() || {};
+        for (const id of ['prHelperSection', 'branchFlowSection']) {
+            const section = document.getElementById(id);
+            section.open = drawerState[id] !== false;
+            section.addEventListener('toggle', () => { drawerState[id] = section.open; vscode.setState?.(drawerState); });
+        }
+        document.getElementById('openBranchFlow').addEventListener('click', () => vscode.postMessage({ command: 'openBranchFlow' }));
 
         const elements = {
             branchName: document.getElementById('branchName'),
@@ -444,12 +219,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ command: 'clearHistory' });
         });
 
+        function renderRecentGraphs(files) {
+            const list = document.getElementById('recentGraphs');
+            list.replaceChildren();
+            document.getElementById('graphCount').textContent = String(files?.length || 0);
+            if (!files?.length) { const empty = document.createElement('li'); empty.textContent = 'No graphs opened yet. Open a file or save your first graph.'; empty.className = 'empty-recent'; list.appendChild(empty); return; }
+            files.forEach((file, index) => {
+                const item = document.createElement('li'); const button = document.createElement('button');
+                button.type = 'button'; button.title = file.path; button.className = 'graph-file';
+                const icon = document.createElement('span'); icon.className = 'file-icon'; icon.innerHTML = '${uiIcon('file')}';
+                const text = document.createElement('span'); text.className = 'file-text';
+                const name = document.createElement('strong'); name.textContent = file.name.replace(/\\.branchflow\\.json$/, '');
+                const location = document.createElement('small'); location.textContent = file.path;
+                text.append(name, location); button.append(icon, text); button.addEventListener('click', () => vscode.postMessage({ command: 'openGraph', data: { index } }));
+                item.appendChild(button); list.appendChild(item);
+            });
+        }
         function renderPRHistory(history) {
+            document.getElementById('prCount').textContent = String(history?.length || 0);
+            elements.clearHistoryBtn.disabled = !history?.length;
             if (!history || history.length === 0) {
                 elements.prHistoryList.innerHTML = \`
                     <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <div class="empty-state-text">No PRs created yet.<br>Create your first PR!</div>
+                        <div class="empty-state-text"><strong>No pull requests yet</strong>Created pull requests will appear here.</div>
                     </div>
                 \`;
                 return;
@@ -470,11 +262,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <span class="pr-card-tag branch">\${escapeHtml(pr.sourceBranch)} → \${escapeHtml(pr.targetBranch)}</span>
                             <span class="pr-card-tag">\${escapeHtml(pr.repository)}</span>
                             <span class="pr-card-tag">\${date}</span>
-                            \${workItems.length > 0 ? \`<span class="pr-card-tag">🔗 \${workItems.map(escapeHtml).join(', ')}</span>\` : ''}
+                            \${workItems.length > 0 ? \`<span class="pr-card-tag">\${workItems.map(escapeHtml).join(', ')}</span>\` : ''}
                         </div>
                         <div class="pr-card-actions">
-                            <button class="btn-primary pr-open-btn" type="button">🔗 Open</button>
-                            <button class="btn-secondary pr-copy-btn" type="button">📋 Copy URL</button>
+                            <button class="btn-primary pr-open-btn" type="button">Open PR</button>
+                            <button class="btn-secondary pr-copy-btn" type="button">Copy URL</button>
                         </div>
                     </div>
                 \`;
@@ -516,13 +308,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             switch (msg.command) {
                 case 'context': {
                     const ctx = msg.data;
-                    elements.branchName.textContent = ctx.branch || 'Not detected';
-                    elements.repoName.textContent = ctx.repo || 'Not detected';
+                    elements.branchName.textContent = ctx.branch || 'Not detected'; elements.branchName.title = ctx.branch || '';
+                    elements.repoName.textContent = ctx.repo || 'Not detected'; elements.repoName.title = ctx.repo || '';
+                    elements.azureStatus.title = ctx.hasAzure ? 'PAT stored. Test the connection in Settings.' : 'Azure PAT is not configured.';
                     elements.azureStatus.className = 'status-dot ' + (ctx.hasAzure ? 'status-ok' : 'status-warning');
-                    elements.aiStatus.className = 'status-dot ' + (ctx.hasAI ? 'status-ok' : 'status-warning');
+                    elements.aiStatus.className = 'status-dot ' + (ctx.hasAI ? 'status-ok' : 'status-optional');
+                    document.getElementById('azureState').textContent = ctx.hasAzure ? 'Configured' : 'Not configured';
+                    document.getElementById('aiState').textContent = ctx.hasAI ? 'Configured' : 'Optional';
                     elements.aiStatusLabel.textContent = ctx.aiProviderLabel || 'AI';
                     elements.warningBanner.classList.toggle('hidden', ctx.hasAzure);
                     renderPRHistory(ctx.prHistory);
+                    renderRecentGraphs(ctx.recentGraphs);
                     break;
                 }
 

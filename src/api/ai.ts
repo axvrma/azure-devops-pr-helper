@@ -326,21 +326,8 @@ export class AIClient {
     }
 
     private handleError(error: unknown): AIGenerationResult {
-        if (axios.isAxiosError(error)) {
-            const axiosError = error as AxiosError;
-            const responseData = axiosError.response?.data;
-            console.error(`${getAIProviderLabel(this.provider)} API error`, responseData ?? axiosError.message);
-            return {
-                error: typeof responseData === 'object'
-                    ? JSON.stringify(responseData)
-                    : axiosError.message,
-                provider: this.provider,
-            };
-        }
-
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`${getAIProviderLabel(this.provider)} error`, message);
-        return { error: message, provider: this.provider };
+        const status = axios.isAxiosError(error) ? (error as AxiosError).response?.status : undefined;
+        return { error: `${getAIProviderLabel(this.provider)} request failed${status ? ` (HTTP ${status})` : ''}. Check the API key, model and connection.`, provider: this.provider };
     }
 }
 

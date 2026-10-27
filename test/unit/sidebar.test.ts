@@ -1,0 +1,21 @@
+import { expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
+import { SidebarProvider } from '../../src/webviews/sidebarProvider';
+import type { ExtensionServices } from '../../src/types';
+import type * as vscode from 'vscode';
+import { Uri } from 'vscode';
+it('renders independent collapsible sections and safe, clickable recent graph files', () => {
+    let receive!: (message: unknown) => void;
+    const view = { visible: true, webview: { html: '', options: {}, asWebviewUri: (uri: Uri) => uri, onDidReceiveMessage: (handler: (message: unknown) => void) => { receive = handler; } }, onDidChangeVisibility: vi.fn(), onDidDispose: vi.fn() };
+    new SidebarProvider({ context: { extensionUri: Uri.file(process.cwd()) } } as ExtensionServices).resolveWebviewView(view as unknown as vscode.WebviewView, {} as vscode.WebviewViewResolveContext, {} as vscode.CancellationToken);
+    const sent: unknown[] = []; const savedState = { prHelperSection: false };
+    const dom = new JSDOM(view.webview.html, { runScripts: 'dangerously', beforeParse: win => { Object.assign(win, { acquireVsCodeApi: () => ({ postMessage: (m: unknown) => sent.push(m), getState: () => savedState, setState: vi.fn() }) }); } });
+    const document = dom.window.document;
+    expect((document.getElementById('prHelperSection') as HTMLDetailsElement).open).toBe(false);
+    expect((document.getElementById('branchFlowSection') as HTMLDetailsElement).open).toBe(true);
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: { command: 'context', data: { hasAzure: true, prHistory: [], recentGraphs: [{ name: '<unsafe>.branchflow.json', path: '/graphs/<unsafe>.branchflow.json' }] } } }));
+    const recent = document.querySelector('#recentGraphs button') as HTMLButtonElement;
+    expect(recent.textContent).toContain('<unsafe>.branchflow.json'); expect(document.querySelector('unsafe')).toBeNull(); recent.click();
+    expect(sent).toContainEqual({ command: 'openGraph', data: { index: 0 } });
+    expect(typeof receive).toBe('function'); dom.window.close();
+});

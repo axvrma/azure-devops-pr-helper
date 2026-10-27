@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
-import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle } from '../api/ai';
+import { createAIClientFromServices, normalizeGeneratedTitle } from '../api/ai';
 import { AIGenerationResult, ExtensionServices } from '../types';
 import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
 
@@ -96,7 +96,7 @@ Repository: ${repo}`;
         return result;
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`${getAIProviderLabel(provider)} generation error:`, err);
+        console.error('AI generation could not complete.');
         
         // Track AI generation failure
         services.analytics.track(AnalyticsEvents.AI_TITLE_FAILED, {

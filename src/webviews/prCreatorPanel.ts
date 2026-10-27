@@ -1,23 +1,14 @@
+import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
-import { AzureDevOpsClient } from '../api/azureDevOps';
 import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle, PRPrompts } from '../api/ai';
 import { AzureRepository, ExtensionServices, PRHistoryItem } from '../types';
 import { CONFIG_KEYS, DEFAULT_CONFIG, SECRET_KEYS, STATE_KEYS } from '../utils/constants';
-import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff, isValidBranchName } from '../utils/git';
-import { getNonce, parseWorkItemIds } from '../utils/helpers';
-
-interface CreatePullRequestFormData {
-    repositoryId: string;
-    sourceBranch: string;
-    targetBranch: string;
-    title: string;
-    description: string;
-    workItems: string;
-    generatedByAI?: boolean;
-}
-
-const MAX_PR_HISTORY = 10;
+import { getCommitMessages, getCurrentBranch, getCurrentRepoName, getGitDiff } from '../utils/git';
+import { getNonce } from '../utils/helpers';
+import { azureClient, configuredContext, PRPrefill, PullRequestService } from '../services/pullRequestService';
+import { safeAzureLink } from '../utils/urls';
+import { rememberRepository, selectedRepository } from '../services/workspaceContext';
 
 export class PRCreatorPanel {
     public static currentPanel: PRCreatorPanel | undefined;
@@ -25,6 +16,9 @@ export class PRCreatorPanel {
     private readonly services: ExtensionServices;
     private disposables: vscode.Disposable[] = [];
     private repositories: AzureRepository[] = [];
+    private prefill?: PRPrefill;
+    private readonly created = new vscode.EventEmitter<void>();
+    public readonly onDidCreate = this.created.event;
 
     private constructor(panel: vscode.WebviewPanel, services: ExtensionServices) {
         this.panel = panel;
@@ -35,13 +29,14 @@ export class PRCreatorPanel {
         this.setupMessageHandler();
     }
 
-    public static createOrShow(services: ExtensionServices): void {
+    public static createOrShow(services: ExtensionServices, prefill?: PRPrefill): PRCreatorPanel {
         const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
         if (PRCreatorPanel.currentPanel) {
             PRCreatorPanel.currentPanel.panel.reveal(column);
-            PRCreatorPanel.currentPanel.refreshData();
-            return;
+            PRCreatorPanel.currentPanel.prefill = prefill;
+            void PRCreatorPanel.currentPanel.refreshData();
+            return PRCreatorPanel.currentPanel;
         }
 
         const panel = vscode.window.createWebviewPanel(
@@ -51,18 +46,21 @@ export class PRCreatorPanel {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
+                localResourceRoots: [uiResourceRoot(services.context)],
             }
         );
 
         PRCreatorPanel.currentPanel = new PRCreatorPanel(panel, services);
+        PRCreatorPanel.currentPanel.prefill = prefill;
 
         // Track PR creator panel opened
         services.analytics.track(AnalyticsEvents.PR_CREATOR_OPENED);
+        return PRCreatorPanel.currentPanel;
     }
 
     private dispose(): void {
         PRCreatorPanel.currentPanel = undefined;
-        this.panel.dispose();
+        this.created.dispose();
         while (this.disposables.length) {
             const disposable = this.disposables.pop();
             if (disposable) {
@@ -78,6 +76,8 @@ export class PRCreatorPanel {
     private setupMessageHandler(): void {
         this.panel.webview.onDidReceiveMessage(
             async (message) => {
+                if (!message || typeof message !== 'object' || typeof message.command !== 'string') { return; }
+                try {
                 switch (message.command) {
                     case 'getInitialData':
                         await this.sendInitialData();
@@ -95,6 +95,7 @@ export class PRCreatorPanel {
                         await this.createPullRequest(message.data);
                         break;
                     case 'copyUrl':
+                        if (typeof message.url !== 'string' || message.url.length > 4096) { return; }
                         await vscode.env.clipboard.writeText(message.url);
                         vscode.window.showInformationMessage('PR URL copied to clipboard');
                         this.services.analytics.track(AnalyticsEvents.PR_URL_COPIED, {
@@ -102,18 +103,20 @@ export class PRCreatorPanel {
                         });
                         break;
                     case 'openUrl':
-                        vscode.env.openExternal(vscode.Uri.parse(message.url));
+                        { const url = safeAzureLink(message.url, this.prefill?.context.organizationUrl ?? configuredContext(this.services).organizationUrl);
+                        if (url) { await vscode.env.openExternal(vscode.Uri.parse(url)); } }
                         break;
                     case 'openSettings':
                         vscode.commands.executeCommand('extension.openSettings');
                         break;
                     case 'deletePRFromHistory':
-                        await this.deletePRFromHistory(message.id);
+                        if (Number.isSafeInteger(message.id)) { await this.deletePRFromHistory(message.id); }
                         break;
                     case 'clearHistory':
                         await this.clearPRHistory();
                         break;
                 }
+                } catch (error) { this.postMessage({ command: 'error', message: error instanceof Error ? error.message : 'PR action failed.' }); }
             },
             null,
             this.disposables
@@ -146,6 +149,7 @@ export class PRCreatorPanel {
                 generateDescription,
                 prHistory,
                 repositories: this.repositories.map(r => ({ id: r.id, name: r.name })),
+                prefill: this.prefill ? { repositoryId: this.prefill.context.repositoryId, sourceBranch: this.prefill.sourceBranch, targetBranch: this.prefill.targetBranch } : undefined,
             }
         });
     }
@@ -159,21 +163,21 @@ export class PRCreatorPanel {
 
         const orgUrl = this.services.getConfig(CONFIG_KEYS.ORG_HOST, DEFAULT_CONFIG.orgHost);
         const project = this.services.getConfig(CONFIG_KEYS.PROJECT, DEFAULT_CONFIG.project);
-        const apiVersion = this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion);
 
-        if (orgUrl === DEFAULT_CONFIG.orgHost || project === DEFAULT_CONFIG.project) {
+        if (!this.prefill && (orgUrl === DEFAULT_CONFIG.orgHost || project === DEFAULT_CONFIG.project)) {
             this.postMessage({ command: 'error', message: 'Azure DevOps not configured. Open Settings to configure org and project.' });
             return;
         }
 
         try {
-            const client = new AzureDevOpsClient(orgUrl, project, pat, apiVersion);
+            const client = await azureClient(this.services, this.prefill?.context);
             this.repositories = await client.listRepositories();
             
             const currentRepo = getCurrentRepoName();
-            let selectedRepoId = '';
+            const remembered = selectedRepository(this.services);
+            let selectedRepoId = this.repositories.some(r => r.id === remembered?.repositoryId) ? remembered!.repositoryId : '';
             
-            if (currentRepo) {
+            if (!selectedRepoId && currentRepo) {
                 const match = this.repositories.find(r => r.name === currentRepo);
                 if (match) {
                     selectedRepoId = match.id;
@@ -216,12 +220,10 @@ export class PRCreatorPanel {
             return;
         }
 
-        const orgUrl = this.services.getConfig(CONFIG_KEYS.ORG_HOST, DEFAULT_CONFIG.orgHost);
-        const project = this.services.getConfig(CONFIG_KEYS.PROJECT, DEFAULT_CONFIG.project);
-        const apiVersion = this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion);
-
         try {
-            const client = new AzureDevOpsClient(orgUrl, project, pat, apiVersion);
+            const context = this.prefill?.context ?? configuredContext(this.services);
+            await rememberRepository(this.services, { ...context, repositoryId: repository.id, repositoryName: repository.name, projectId: repository.project.id });
+            const client = await azureClient(this.services, this.prefill?.context);
             const branches = await client.listBranches(repositoryId);
             this.postMessage({
                 command: 'branchesLoaded',
@@ -242,6 +244,7 @@ export class PRCreatorPanel {
     }
 
     private async generateAIContent(branch: string, repo: string, targetBranch?: string): Promise<void> {
+        if (typeof branch !== 'string' || typeof repo !== 'string' || (targetBranch !== undefined && typeof targetBranch !== 'string')) { throw new Error('Invalid AI form context.'); }
         const { client, provider, model, error } = await createAIClientFromServices(this.services);
         if (!client) {
             this.postMessage({ command: 'aiGenerated', data: { error: error ?? 'AI provider API key not configured' } });
@@ -308,161 +311,22 @@ export class PRCreatorPanel {
         }
     }
 
-    private async createPullRequest(data: CreatePullRequestFormData): Promise<void> {
-        const validationError = this.validatePullRequestInput(data);
-        if (validationError) {
-            this.postMessage({ command: 'prCreateError', message: validationError });
-            return;
-        }
-
-        const pat = await this.services.getSecret(SECRET_KEYS.AZURE_PAT);
-        if (!pat) {
-            this.postMessage({ command: 'prCreateError', message: 'Azure PAT not configured' });
-            return;
-        }
-
-        const orgUrl = this.services.getConfig(CONFIG_KEYS.ORG_HOST, DEFAULT_CONFIG.orgHost);
-        const project = this.services.getConfig(CONFIG_KEYS.PROJECT, DEFAULT_CONFIG.project);
-        const apiVersion = this.services.getConfig(CONFIG_KEYS.API_VERSION, DEFAULT_CONFIG.apiVersion);
-
-        if (!orgUrl || orgUrl === DEFAULT_CONFIG.orgHost || !project || project === DEFAULT_CONFIG.project) {
-            this.postMessage({ command: 'prCreateError', message: 'Azure DevOps organization and project are not configured' });
-            return;
-        }
-
-        const sourceBranch = data.sourceBranch.trim();
-        const targetBranch = data.targetBranch.trim();
-        const title = data.title.trim();
-        const description = data.description?.trim() || '';
-
+    private async createPullRequest(data: unknown): Promise<void> {
         try {
-            const client = new AzureDevOpsClient(orgUrl, project, pat, apiVersion);
-            
-            const pr = await client.createPullRequest(data.repositoryId, {
-                sourceRefName: `refs/heads/${sourceBranch}`,
-                targetRefName: `refs/heads/${targetBranch}`,
-                title,
-                description,
-            });
-
-            const prUrl = client.getPullRequestWebUrl(pr);
-            await this.services.setState(STATE_KEYS.LAST_PR_URL, prUrl);
-
-            // Link work items
-            const workItemIds = parseWorkItemIds(data.workItems || '');
-            const linkedWorkItems: string[] = [];
-            
-            if (workItemIds.length > 0 && pr.artifactId) {
-                for (const id of workItemIds) {
-                    try {
-                        await client.linkWorkItem(id, pr.artifactId);
-                        linkedWorkItems.push(id);
-                    } catch (err) {
-                        console.error(`Failed to link work item ${id}:`, err);
-                    }
-                }
-            }
-
-            // Get repository name
-            const repo = this.repositories.find(r => r.id === data.repositoryId);
-
-            // Save to history
-            const historyItem: PRHistoryItem = {
-                id: pr.pullRequestId,
-                title,
-                description,
-                url: prUrl,
-                sourceBranch,
-                targetBranch,
-                repository: repo?.name || 'Unknown',
-                createdAt: new Date().toISOString(),
-                workItems: linkedWorkItems,
-            };
-
-            await this.addToPRHistory(historyItem);
-
-            this.postMessage({
-                command: 'prCreated',
-                data: historyItem,
-            });
-
-            vscode.window.showInformationMessage(`PR #${pr.pullRequestId} created successfully!`);
-
-            // Track PR creation success
-            this.services.analytics.track(AnalyticsEvents.PR_CREATED, {
-                has_ai_title: !!data.generatedByAI,
-                has_ai_description: !!data.generatedByAI && !!description,
-                work_items_count: linkedWorkItems.length,
-                repository: repo?.name,
-            });
-
-            // Track work items linked if any
-            if (linkedWorkItems.length > 0) {
-                this.services.analytics.track(AnalyticsEvents.WORK_ITEM_LINKED, {
-                    count: linkedWorkItems.length,
-                });
-            }
+            const client = await azureClient(this.services, this.prefill?.context);
+            const repoId = data && typeof data === 'object' && 'repositoryId' in data ? data.repositoryId : undefined;
+            const repo = this.repositories.find(r => r.id === repoId);
+            if (!repo) { throw new Error('Select an available repository before submitting.'); }
+            const context = this.prefill?.context ?? configuredContext(this.services);
+            const result = await new PullRequestService(client, this.services, JSON.stringify(context)).create(data, repo.name);
+            this.postMessage({ command: 'prCreated', data: result.history });
+            if (result.warnings.length) { this.postMessage({ command: 'error', message: result.warnings.join(' ') }); }
+            this.created.fire();
+            this.services.analytics.track(AnalyticsEvents.PR_CREATED, { work_items_count: result.history.workItems.length });
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            this.postMessage({ command: 'prCreateError', message });
-
-            // Track PR creation failure
-            this.services.analytics.track(AnalyticsEvents.PR_CREATION_FAILED, {
-                error_type: message,
-            });
+            this.postMessage({ command: 'prCreateError', message: error instanceof Error ? error.message : 'PR creation failed.' });
+            this.services.analytics.track(AnalyticsEvents.PR_CREATION_FAILED, { error_type: 'request_failed' });
         }
-    }
-
-    private validatePullRequestInput(data: CreatePullRequestFormData): string | undefined {
-        if (!data || typeof data !== 'object') {
-            return 'Invalid pull request form data';
-        }
-
-        if (!data.repositoryId?.trim()) {
-            return 'Repository is required';
-        }
-
-        if (!data.sourceBranch?.trim()) {
-            return 'Source branch is required';
-        }
-
-        if (!isValidBranchName(data.sourceBranch.trim())) {
-            return 'Source branch name is invalid';
-        }
-
-        if (!data.targetBranch?.trim()) {
-            return 'Target branch is required';
-        }
-
-        if (!isValidBranchName(data.targetBranch.trim())) {
-            return 'Target branch name is invalid';
-        }
-
-        if (data.sourceBranch.trim() === data.targetBranch.trim()) {
-            return 'Source and target branches must be different';
-        }
-
-        if (!data.title?.trim()) {
-            return 'PR title is required';
-        }
-
-        if (data.title.trim().length > 200) {
-            return 'PR title must be 200 characters or fewer';
-        }
-
-        return undefined;
-    }
-
-    private async addToPRHistory(item: PRHistoryItem): Promise<void> {
-        const history = this.services.getState<PRHistoryItem[]>(STATE_KEYS.PR_HISTORY) || [];
-        history.unshift(item);
-        
-        // Keep only last N items
-        if (history.length > MAX_PR_HISTORY) {
-            history.splice(MAX_PR_HISTORY);
-        }
-        
-        await this.services.setState(STATE_KEYS.PR_HISTORY, history);
     }
 
     private async deletePRFromHistory(prId: number): Promise<void> {
@@ -485,7 +349,7 @@ export class PRCreatorPanel {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Pull Request</title>
     <style>
@@ -941,17 +805,18 @@ export class PRCreatorPanel {
             font-weight: 600;
         }
     </style>
+    <link rel="stylesheet" href="${uiStylesUri(this.panel.webview, this.services.context)}">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>
-                <span>🚀</span>
+                ${uiIcon('pullRequest')}
                 Create Pull Request
             </h1>
             <div class="header-actions">
                 <button class="btn-secondary btn-small" id="settingsBtn" title="Open Settings">
-                    ⚙️ Settings
+                    ${uiIcon('settings')} Settings
                 </button>
             </div>
         </div>
@@ -966,7 +831,7 @@ export class PRCreatorPanel {
                 <span id="aiProviderLabel">AI Provider</span>
             </div>
             <div class="status-item" id="branchInfo">
-                <span>📍</span>
+                ${uiIcon('branch')}
                 <span id="currentBranchDisplay">Detecting...</span>
             </div>
         </div>
@@ -977,7 +842,7 @@ export class PRCreatorPanel {
             <!-- Form Section -->
             <div class="form-section">
                 <h2 class="section-title">
-                    <span>📝</span>
+                    ${uiIcon('file')}
                     PR Details
                 </h2>
                 
@@ -989,7 +854,7 @@ export class PRCreatorPanel {
                             <input type="text" id="repositorySearch" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off" placeholder="Loading repositories..." disabled>
                             <div id="repositoryOptions" class="dropdown-options hidden" role="listbox"></div>
                         </div>
-                        <button class="btn-secondary btn-icon" id="refreshRepos" title="Refresh">🔄</button>
+                        <button class="btn-secondary btn-icon" id="refreshRepos" title="Refresh">${uiIcon('refresh')}</button>
                     </div>
                 </div>
                 
@@ -1014,7 +879,7 @@ export class PRCreatorPanel {
                     <div class="input-with-button">
                         <input type="text" id="prTitle" placeholder="Enter PR title">
                         <button class="btn-secondary btn-small" id="generateAI" title="Generate with AI">
-                            ✨ AI
+                            AI
                         </button>
                     </div>
                 </div>
@@ -1031,7 +896,7 @@ export class PRCreatorPanel {
                 
                 <div class="submit-section">
                     <button class="btn-primary submit-btn" id="createPRBtn">
-                        <span id="createBtnText">🚀 Create Pull Request</span>
+                        <span id="createBtnText">Create Pull Request</span>
                         <span id="createBtnLoading" class="loading hidden"></span>
                     </button>
                 </div>
@@ -1041,7 +906,7 @@ export class PRCreatorPanel {
             <div class="history-section">
                 <div class="history-header">
                     <h2 class="section-title" style="margin-bottom: 0;">
-                        <span>📋</span>
+                        ${uiIcon('archive')}
                         Recent PRs
                     </h2>
                     <button class="btn-secondary btn-small" id="clearHistoryBtn">Clear All</button>
@@ -1049,7 +914,7 @@ export class PRCreatorPanel {
                 
                 <div id="prHistoryList">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-icon">${uiIcon('archive')}</div>
                         <div class="empty-state-text">No PRs created yet.<br>Create your first PR!</div>
                     </div>
                 </div>
@@ -1059,6 +924,7 @@ export class PRCreatorPanel {
 
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
+        let graphPrefill = null;
         
         // Elements
         const elements = {
@@ -1352,7 +1218,7 @@ export class PRCreatorPanel {
             if (!history || history.length === 0) {
                 elements.prHistoryList.innerHTML = \`
                     <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-icon">${uiIcon('archive')}</div>
                         <div class="empty-state-text">No PRs created yet.<br>Create your first PR!</div>
                     </div>
                 \`;
@@ -1377,14 +1243,14 @@ export class PRCreatorPanel {
                             <span class="pr-card-tag branch">\${escapeHtml(pr.sourceBranch)} → \${escapeHtml(pr.targetBranch)}</span>
                             <span class="pr-card-tag">\${escapeHtml(pr.repository)}</span>
                             <span class="pr-card-tag">\${date}</span>
-                            \${pr.workItems.length > 0 ? \`<span class="pr-card-tag">🔗 \${pr.workItems.join(', ')}</span>\` : ''}
+                            \${pr.workItems.length > 0 ? \`<span class="pr-card-tag"> \${pr.workItems.join(', ')}</span>\` : ''}
                         </div>
                         <div class="pr-card-actions">
                             <button class="btn-primary btn-small pr-open-btn">
-                                🔗 Open
+                                Open
                             </button>
                             <button class="btn-secondary btn-small pr-copy-btn">
-                                📋 Copy URL
+                                Copy URL
                             </button>
                         </div>
                     </div>
@@ -1430,6 +1296,7 @@ export class PRCreatorPanel {
             
             switch (msg.command) {
                 case 'initialData':
+                    graphPrefill = msg.data.prefill || null;
                     const data = msg.data;
                     currentBranch = data.currentBranch || '';
                     currentRepo = data.currentRepo || '';
@@ -1458,7 +1325,7 @@ export class PRCreatorPanel {
                         ? 'Search and select a repository'
                         : 'No repositories found';
 
-                    const selectedRepository = repositories.find(repository => repository.id === msg.data.selectedRepoId);
+                    const selectedRepository = repositories.find(repository => repository.id === (graphPrefill?.repositoryId || msg.data.selectedRepoId));
                     if (selectedRepository) {
                         selectRepository(selectedRepository);
                     } else {
@@ -1495,6 +1362,11 @@ export class PRCreatorPanel {
 
                     if (detectedSource) selectBranch('source', detectedSource);
                     if (defaultTarget) selectBranch('target', defaultTarget);
+                    if (graphPrefill && graphPrefill.repositoryId === elements.repository.value) {
+                        if (branches.includes(graphPrefill.sourceBranch)) selectBranch('source', graphPrefill.sourceBranch);
+                        if (branches.includes(graphPrefill.targetBranch)) selectBranch('target', graphPrefill.targetBranch);
+                        graphPrefill = null;
+                    }
                     if (branches.length === 0) showError('No branches were found for the selected repository.');
                     break;
 
@@ -1507,7 +1379,7 @@ export class PRCreatorPanel {
                 case 'aiGenerated':
                     isGenerating = false;
                     elements.generateAI.disabled = false;
-                    elements.generateAI.innerHTML = '✨ AI';
+                    elements.generateAI.innerHTML = 'AI';
                     
                     if (msg.data.error) {
                         showError('AI generation failed: ' + msg.data.error);

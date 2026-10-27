@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process';
 import * as vscode from 'vscode';
+import { validBranch } from '../branchFlow/domain/model';
 
 /**
  * Get the root path of the current workspace
@@ -35,6 +36,9 @@ function git(args: string[], cwd: string): string {
         encoding: 'utf8',
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 3000,
+        maxBuffer: 256 * 1024,
+        windowsHide: true,
     }).trim();
 }
 
@@ -49,7 +53,7 @@ export function getCurrentBranch(): string | undefined {
     
     try {
         const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
-        return branch || undefined;
+        return branch && branch !== 'HEAD' ? branch : undefined;
     } catch {
         return undefined;
     }
@@ -116,28 +120,7 @@ export function getRemoteUrl(): string | undefined {
  * Validate a branch name format
  */
 export function isValidBranchName(branchName: string): boolean {
-    if (!branchName || branchName.trim().length === 0) {
-        return false;
-    }
-    
-    // Git branch name rules:
-    // - Cannot start with '.' or end with '/'
-    // - Cannot contain '..' or '//'
-    // - Cannot contain control characters, spaces, ~, ^, :, ?, *, [
-    const invalidPatterns = [
-        /^\./,           // starts with .
-        /\/$/,           // ends with /
-        /\.\./,          // contains ..
-        /\/\//,          // contains //
-        // eslint-disable-next-line no-control-regex
-        /[\x00-\x1f]/,   // control characters
-        // eslint-disable-next-line no-useless-escape
-        /[ ~^:?*\[\\]/,  // special characters
-        /@\{/,           // @{
-        /\.lock$/,       // ends with .lock
-    ];
-    
-    return !invalidPatterns.some(pattern => pattern.test(branchName));
+    return validBranch(branchName);
 }
 
 /**
@@ -146,10 +129,7 @@ export function isValidBranchName(branchName: string): boolean {
  */
 export function getGitDiff(targetBranch?: string): string | undefined {
     const cwd = getWorkspaceRoot();
-    if (!cwd) {
-        return undefined;
-    }
-    
+    if (!cwd || (targetBranch !== undefined && !validBranch(targetBranch))) { return undefined; }
     try {
         let diff = '';
         
@@ -220,6 +200,7 @@ export function getCommitMessages(targetBranch?: string): string | undefined {
     
     try {
         const target = targetBranch || 'main';
+        if (!validBranch(target)) { return undefined; }
         const messages = git(['log', `${target}..HEAD`, '--oneline', '--no-decorate'], cwd);
         
         return messages || undefined;
