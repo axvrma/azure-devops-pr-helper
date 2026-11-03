@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 /**
  * Normalize a base URL by removing trailing slashes
  */
@@ -12,12 +13,7 @@ export function normalizeBaseUrl(url: string | undefined): string | undefined {
  * Generate a cryptographic nonce for CSP
  */
 export function getNonce(): string {
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let text = '';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
+    return randomBytes(24).toString('base64');
 }
 
 /**

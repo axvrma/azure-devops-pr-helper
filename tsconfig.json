@@ -17,10 +17,15 @@
         ],
         "typeRoots": [
             "node_modules/@types"
-        ]
+        ],
+        "esModuleInterop": true,
+        "resolveJsonModule": true
     },
     "exclude": [
         "node_modules",
         ".vscode-test"
+    ],
+    "include": [
+        "src/**/*.ts"
     ]
 }

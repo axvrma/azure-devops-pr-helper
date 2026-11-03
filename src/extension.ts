@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { BranchFlowProvider } from './branchFlow/panel';
 import { AnalyticsEvents, AnalyticsService } from './analytics';
 import {
     clearPATCommand,
@@ -31,6 +32,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
         // Register commands
         registerCommands(context, services);
+
+        const branchFlow = new BranchFlowProvider(services);
+        context.subscriptions.push(branchFlow, branchFlow.register(),
+            vscode.commands.registerCommand('extension.openBranchFlow', () => branchFlow.openNew()),
+            vscode.commands.registerCommand('extension.openBranchFlowFile', () => branchFlow.pickOpen(false)));
 
         // Register sidebar view
         const sidebarProvider = new SidebarProvider(services);

@@ -1,0 +1,41 @@
+name: Verify extension
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm audit
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - run: npm run vscode:package
+  native-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        vscode: ['1.60.2', 'stable']
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install-deps chromium
+      - run: xvfb-run -a npm run test:extension
+        env:
+          VSCODE_TEST_VERSION: ${{ matrix.vscode }}

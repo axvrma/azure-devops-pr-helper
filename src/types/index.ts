@@ -46,7 +46,11 @@ export interface AzurePullRequest {
         id: string;
         name: string;
     };
-    _links: AzurePullRequestLinks;
+    _links?: AzurePullRequestLinks;
+    forkSource?: { repository: { id: string } };
+    mergeStatus?: string;
+    lastMergeSourceCommit?: { commitId: string };
+    lastMergeTargetCommit?: { commitId: string };
 }
 
 export interface AzurePullRequestCreatePayload {

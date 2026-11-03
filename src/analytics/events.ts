@@ -29,7 +29,6 @@ export interface PRCreatedProperties {
     has_ai_title: boolean;
     has_ai_description: boolean;
     work_items_count: number;
-    repository?: string;
 }
 
 export interface PRCreationFailedProperties {

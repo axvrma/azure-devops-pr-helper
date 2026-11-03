@@ -47,8 +47,8 @@ export class AnalyticsService {
                 flushInterval: 30000,
             });
             this.enabled = true;
-        } catch (error) {
-            console.error('Failed to initialize PostHog client:', error);
+        } catch {
+            console.error('Usage analytics could not start.');
             this.enabled = false;
         }
     }
@@ -77,19 +77,19 @@ export class AnalyticsService {
                 distinctId: this.distinctId,
                 event,
                 properties: {
-                    ...properties,
+                    ...safeTelemetryProperties(properties),
                     extension_version: this.extensionVersion,
                     vscode_version: vscode.version,
                     platform: process.platform,
                 },
             });
-        } catch (error) {
-            console.error('Failed to track event:', error);
+        } catch {
+            console.error('Usage event could not be recorded.');
         }
     }
 
     public identify(properties?: Record<string, unknown>): void {
-        if (!this.enabled || !this.client) {
+        if (!this.enabled || !this.client || !this.isTelemetryEnabled()) {
             return;
         }
 
@@ -97,14 +97,14 @@ export class AnalyticsService {
             this.client.identify({
                 distinctId: this.distinctId,
                 properties: {
-                    ...properties,
+                    ...safeTelemetryProperties(properties),
                     extension_version: this.extensionVersion,
                     vscode_version: vscode.version,
                     platform: process.platform,
                 },
             });
-        } catch (error) {
-            console.error('Failed to identify user:', error);
+        } catch {
+            console.error('Usage identity could not be recorded.');
         }
     }
 
@@ -117,4 +117,23 @@ export class AnalyticsService {
     public setEnabled(enabled: boolean): void {
         this.enabled = enabled && this.isTelemetryEnabled();
     }
+}
+
+/** Discard content-bearing and unrestricted string properties, even from legacy call sites. */
+export function safeTelemetryProperties(properties: Record<string, unknown> = {}): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const numeric = new Set(['count', 'work_items_count']);
+    const boolean = new Set(['enabled', 'success', 'has_ai_title', 'has_ai_description', 'has_custom_prompt', 'has_diff']);
+    const enums: Record<string, readonly string[]> = {
+        provider: ['anthropic', 'gemini', 'openai'], type: ['azure', 'anthropic', 'gemini', 'openai'],
+        source: ['sidebar', 'panel', 'command'],
+        setting_key: ['orgHost', 'project', 'useAI', 'generateDescription', 'autoAcceptAI', 'aiProvider', 'aiModel', 'aiMaxTokens', 'aiTemperature', 'apiVersion', 'enableTelemetry'],
+    };
+    for (const [key, value] of Object.entries(properties)) {
+        if (numeric.has(key) && typeof value === 'number' && Number.isFinite(value)) { result[key] = value; }
+        if (boolean.has(key) && typeof value === 'boolean') { result[key] = value; }
+        if (enums[key]?.includes(String(value))) { result[key] = value; }
+        if (key === 'error_type') { result[key] = 'operation_failed'; }
+    }
+    return result;
 }

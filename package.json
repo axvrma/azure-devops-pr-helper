@@ -1,9 +1,9 @@
 {
     "name": "azure-devops-pr-helper",
     "displayName": "Azure DevOps PR Helper",
-    "description": "Create Pull Requests on Azure DevOps with AI-powered title and description generation using Anthropic, Gemini, or OpenAI",
+    "description": "Create Azure DevOps pull requests and visually plan branch integration with Branch Flow Manager and optional AI assistance",
     "publisher": "axvrma",
-    "version": "1.0.3",
+    "version": "1.1.3",
     "license": "MIT",
     "icon": "images/icon.png",
     "galleryBanner": {
@@ -35,7 +35,9 @@
         "ai",
         "git",
         "devops",
-        "automation"
+        "automation",
+        "branch flow",
+        "release management"
     ],
     "activationEvents": [
         "onCommand:extension.raisePR",
@@ -44,28 +46,51 @@
         "onCommand:extension.clearPAT",
         "onCommand:extension.openSettings",
         "onCommand:extension.generateAITitle",
-        "onView:prHelperSidebarView"
+        "onView:prHelperSidebarView",
+        "onCommand:extension.openBranchFlow",
+        "onCustomEditor:azureDevopsPr.branchFlow"
     ],
     "scripts": {
-        "vscode:package": "npm ci && npm run compile && npx @vscode/vsce package",
+        "vscode:package": "npm run verify && vsce package --no-dependencies",
         "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "lint": "eslint src --ext ts"
+        "compile": "npm run typecheck && node scripts/build.mjs && vite build --config webview/vite.config.mts && npm run licenses",
+        "watch": "node scripts/build.mjs --watch",
+        "typecheck": "tsc --noEmit -p . && tsc --noEmit -p webview",
+        "lint": "eslint src webview/src test --ext .ts,.tsx",
+        "test": "vitest run",
+        "test:extension": "npm run compile && node scripts/test-extension.mjs",
+        "verify": "npm run typecheck && npm run lint && npm test && npm run compile",
+        "package:inspect": "vsce ls --no-dependencies --tree",
+        "test:browser": "npm run compile && playwright test",
+        "licenses": "node scripts/licenses.mjs"
     },
     "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@types/vscode": "^1.60.0",
-        "@typescript-eslint/eslint-plugin": "^6.0.0",
-        "@typescript-eslint/parser": "^6.0.0",
+        "@playwright/test": "^1.64.1",
+        "@testing-library/react": "^16.3.0",
+        "@testing-library/user-event": "^14.6.1",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "@types/vscode": "1.60.0",
+        "@typescript-eslint/eslint-plugin": "^8.72.0",
+        "@typescript-eslint/parser": "^8.72.0",
+        "@vscode/test-electron": "^3.1.0",
+        "@vscode/vsce": "^4.0.0",
+        "esbuild": "^0.28.2",
         "eslint": "^8.0.0",
+        "jsdom": "^28.0.0",
         "typescript": "^5.0.0",
-        "vscode-test": "^1.6.1"
+        "vite": "^8.3.5",
+        "vitest": "^5.0.5"
     },
     "dependencies": {
+        "@xyflow/react": "^12.12.0",
+        "abort-controller": "^3.0.0",
         "axios": "^1.6.0",
-        "posthog-js": "^1.364.1",
-        "posthog-node": "^3.6.0"
+        "posthog-node": "^3.6.0",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1",
+        "zod": "^4.6.7"
     },
     "main": "./out/extension.js",
     "contributes": {
@@ -105,6 +130,12 @@
                 "title": "Generate PR Title with AI",
                 "category": "Azure DevOps",
                 "icon": "$(sparkle)"
+            },
+            {
+                "command": "extension.openBranchFlow",
+                "title": "Open Branch Flow",
+                "category": "Azure DevOps",
+                "icon": "$(git-merge)"
             }
         ],
         "viewsContainers": {
@@ -196,6 +227,18 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Enable anonymous usage analytics to help improve the extension"
+                },
+                "azureDevopsPr.branchFlow.pollIntervalSeconds": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "maximum": 3600,
+                    "description": "Branch Flow polling interval. 0 disables polling; positive intervals have a 30-second minimum."
+                },
+                "azureDevopsPr.branchFlow.localAnalysis": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Allow isolated local Git analysis in trusted workspaces when the exact Azure commits already exist locally. Never fetches."
                 }
             }
         },
@@ -225,6 +268,11 @@
             ],
             "view/title": [
                 {
+                    "command": "extension.openBranchFlow",
+                    "when": "view == prHelperSidebarView",
+                    "group": "navigation"
+                },
+                {
                     "command": "extension.openPRCreator",
                     "when": "view == prHelperSidebarView",
                     "group": "navigation"
@@ -235,6 +283,36 @@
                     "group": "navigation"
                 }
             ]
+        },
+        "customEditors": [
+            {
+                "viewType": "azureDevopsPr.branchFlow",
+                "displayName": "Branch Flow Manager",
+                "selector": [
+                    {
+                        "filenamePattern": "*.branchflow.json"
+                    }
+                ],
+                "priority": "default"
+            }
+        ]
+    },
+    "overrides": {
+        "@vscode/vsce": {
+            "@azure/identity": "4.13.0",
+            "@azure/msal-node": {
+                "uuid": "^11.1.1"
+            }
+        }
+    },
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": "limited",
+            "description": "Azure planning and local graph files are available. Local Git simulation is disabled until the workspace is trusted."
+        },
+        "virtualWorkspaces": {
+            "supported": "limited",
+            "description": "Azure analysis is available; graph saves and Git simulation require a local filesystem."
         }
     }
 }

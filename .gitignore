@@ -2,3 +2,10 @@ out
 node_modules
 org-config.ts
 azure-devops-pr-helper-*.vsix
+.vscode-test/
+.test-out/
+test-results/
+playwright-report/
+media/branch-flow/
+coverage/
+*.branchflow.json.lock
