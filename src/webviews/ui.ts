@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
+import { PRISM_MARK_PATHS } from '../branding/mark';
 
 const paths = {
+    more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    remove: '<path d="m6 6 12 12M6 18 18 6"/>',
     pullRequest: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10m7-12h2a3 3 0 0 1 3 3v9m-5-12 3-3m-3 3 3 3"/><circle cx="18" cy="19" r="2"/>',
     branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 7v10m0-4h5a7 7 0 0 0 7-5"/>',
     file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M8 13h8m-8 4h5"/>',
@@ -20,4 +23,9 @@ export function uiIcon(name: keyof typeof paths): string {
 export function uiResourceRoot(context: vscode.ExtensionContext): vscode.Uri { return vscode.Uri.joinPath(context.extensionUri, 'media', 'ui'); }
 export function uiStylesUri(webview: vscode.Webview, context: vscode.ExtensionContext): vscode.Uri {
     return webview.asWebviewUri(vscode.Uri.joinPath(uiResourceRoot(context), 'workbench.css'));
+}
+
+/** The website's trusted vector, adapted to the active VS Code foreground color. */
+export function uiBrandMark(): string {
+    return `<svg class="prism-mark" width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">${PRISM_MARK_PATHS}</svg>`;
 }

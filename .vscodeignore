@@ -26,3 +26,5 @@ resources/**
 out/**
 !out/extension.js
 .github/**
+apps/**
+netlify.toml

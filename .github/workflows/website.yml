@@ -1,0 +1,27 @@
+name: Verify website
+on:
+  push:
+    paths: ['apps/website/**', 'netlify.toml', '.github/workflows/website.yml']
+  pull_request:
+    paths: ['apps/website/**', 'netlify.toml', '.github/workflows/website.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/website
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/website/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify
+      - run: npm audit --omit=dev

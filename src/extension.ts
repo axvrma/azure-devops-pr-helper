@@ -12,7 +12,7 @@ import { createExtensionServices } from './utils/services';
 import { PRCreatorPanel, SettingsPanel, SidebarProvider } from './webviews';
 
 export function activate(context: vscode.ExtensionContext): void {
-    console.log('Activating Azure DevOps PR Helper extension');
+    console.log('Activating Prism extension');
 
     try {
         // Create services wrapper for dependency injection
@@ -44,9 +44,9 @@ export function activate(context: vscode.ExtensionContext): void {
             vscode.window.registerWebviewViewProvider(VIEWS.SIDEBAR, sidebarProvider)
         );
 
-        console.log('Azure DevOps PR Helper extension activated successfully');
+        console.log('Prism extension activated successfully');
     } catch (err) {
-        console.error('Activation error in Azure DevOps PR Helper:', err);
+        console.error('Activation error in Prism:', err);
         throw err;
     }
 }
@@ -97,7 +97,7 @@ function registerCommands(
 }
 
 export async function deactivate(): Promise<void> {
-    console.log('Azure DevOps PR Helper extension deactivated');
+    console.log('Prism extension deactivated');
     
     // Flush any pending analytics events and shutdown
     await AnalyticsService.shutdown();

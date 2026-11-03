@@ -22,7 +22,7 @@ Implementation and local checks are complete. Live Azure/AI account checks, the 
 
 ## Follow-up sidebar and editor UX
 
-- [x] Separate collapsible PR Helper and Branch Flow sections with live recent-opened files.
+- [x] Separate collapsible Pull Requests and Branch Flow sections with live recent-opened files.
 - [x] Inherit the PR Creator repository/project for new graphs; retain editable graph context.
 - [x] One toolbar with Actions menu, new-connection controls, context and Settings; remove branding row.
 - [x] Prompt for first-save filename using unassociated untitled resources and native Save As.

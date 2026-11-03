@@ -1,4 +1,4 @@
-import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
+import { uiBrandMark, uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import {
@@ -42,7 +42,7 @@ export class SettingsPanel {
 
         const panel = vscode.window.createWebviewPanel(
             'azureDevOpsSettings',
-            'Azure DevOps PR Helper Settings',
+            'Prism Settings',
             column,
             {
                 enableScripts: true,
@@ -310,7 +310,7 @@ export class SettingsPanel {
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings</title>
+    <title>Prism Settings</title>
     <style>
         :root {
             --vscode-font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
@@ -663,8 +663,8 @@ export class SettingsPanel {
 </head>
 <body>
     <h1>
-        ${uiIcon('settings')}
-        Azure DevOps PR Helper
+        ${uiBrandMark()}
+        Prism <span class="prism-page-label">Settings</span>
     </h1>
     <p class="subtitle">Configure Azure DevOps and your preferred AI provider in one place.</p>
 

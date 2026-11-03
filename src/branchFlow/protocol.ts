@@ -4,7 +4,7 @@ const edgeId = z.string().min(1).max(128);
 export const hostMessageSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('ready') }).strict(),
     z.object({ type: z.literal('edit'), graph: graphSchema }).strict(),
-    z.object({ type: z.literal('action'), action: z.enum(['new', 'save', 'saveAs', 'open', 'import', 'export', 'refresh', 'analyze', 'cancel', 'context', 'settings', 'recent', 'reloadExternal', 'keepLocal']) }).strict(),
+    z.object({ type: z.literal('action'), action: z.enum(['new', 'save', 'saveAs', 'open', 'import', 'export', 'refresh', 'analyze', 'cancel', 'context', 'settings', 'recent', 'removeRecent', 'reloadExternal', 'keepLocal']) }).strict(),
     z.object({ type: z.literal('edgeAction'), action: z.enum(['analyze', 'createPr', 'openPr', 'details']), edgeId }).strict(),
 ]);
 export type HostMessage = z.infer<typeof hostMessageSchema>;

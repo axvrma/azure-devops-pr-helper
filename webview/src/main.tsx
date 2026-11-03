@@ -1,3 +1,4 @@
+import { PrismMark } from './PrismMark';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactFlow, ReactFlowProvider, Background, Controls, ControlButton, MiniMap, Handle, Position, MarkerType, BaseEdge, EdgeLabelRenderer,
@@ -251,7 +252,7 @@ export function App(): React.JSX.Element {
         } catch (error) { report(error instanceof Error ? error.message : 'Could not fit the canvas.', 'Fit View'); }
     }, [notify, report, update]);
     const menuActions: MenuAction[] = [
-        ...(['new', 'save', 'saveAs', 'open', 'recent', 'import', 'export'] as const).map((name, index) => ({ group: 'File', label: ['New', 'Save', 'Save As', 'Open', 'Recent', 'Import', 'Export'][index], run: () => action(name) })),
+        ...(['new', 'save', 'saveAs', 'open', 'recent', 'removeRecent', 'import', 'export'] as const).map((name, index) => ({ group: 'File', label: ['New', 'Save', 'Save As', 'Open', 'Recent', 'Remove Recent…', 'Import', 'Export'][index], run: () => action(name) })),
         { group: 'Validate', label: 'Refresh', disabled: !graph.repository || busy, run: () => action('refresh') },
         { group: 'Validate', label: 'Analyze All', disabled: !graph.repository || busy, run: () => action('analyze') },
         { group: 'Canvas', label: 'Auto Layout', run: () => { update(layoutGraph(graphRef.current)); notify('Graph arranged.'); requestAnimationFrame(() => { void fitCanvas(false); }); } },
@@ -261,6 +262,7 @@ export function App(): React.JSX.Element {
     ];
     return <main className="app" onClick={() => contextMenu && setContextMenu(null)}>
         <nav className="toolbar" aria-label="Graph toolbar">
+            <span className="prism-toolbar-brand" title="Prism — See every branch. Understand every change."><PrismMark /><strong>Prism</strong></span>
             <ActionMenu actions={menuActions} />
             <input aria-label="Graph name" className="graph-name" value={graph.name} maxLength={200}
                 onFocus={() => { nameStart.current = graphRef.current; }} onChange={e => update({ ...graphRef.current, name: e.target.value || 'Untitled Branch Flow' }, false)}
@@ -306,7 +308,7 @@ export function App(): React.JSX.Element {
             </ReactFlow>
             </CanvasBoundary>
             <span className="canvas-hint">Scroll to pan · Shift+scroll horizontally · Ctrl/Cmd+scroll to zoom</span>
-            {!graph.nodes.length && <div className="canvas-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="6" r="2" /><path d="M6 7v10m0-4h5a7 7 0 0 0 7-5" /></svg><h1>Map your branch flow</h1><p>Add branches, then connect a source to its target.</p><p>Analyze each relationship before planning integration.</p></div>}
+            {!graph.nodes.length && <div className="canvas-empty"><PrismMark /><h1>Map your branch flow</h1><p>Add branches, then connect a source to its target.</p><p>Analyze each relationship before planning integration.</p></div>}
         </section>
         <aside className="inspector" aria-label="Selection inspector"><ErrorInspector errors={errors} clear={clearErrors} /><div className="section-heading"><h2>{selectedEdge ? 'Relationship' : selectedNode ? 'Branch details' : 'Release overview'}</h2></div>
             {selectedNode && <><h3 className="break">{selectedNode.branch}</h3><dl><dt>Repository</dt><dd>{graph.repository?.repositoryName ?? graph.repository?.repositoryId}</dd><dt>Remote SHA</dt><dd className="sha">{heads.get(selectedNode.branch) ?? 'Missing or not loaded'}</dd>

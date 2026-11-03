@@ -1,13 +1,13 @@
 {
     "name": "azure-devops-pr-helper",
-    "displayName": "Azure DevOps PR Helper",
-    "description": "Create Azure DevOps pull requests and visually plan branch integration with Branch Flow Manager and optional AI assistance",
+    "displayName": "Prism",
+    "description": "See every branch. Understand every change. Visual branch planning, integration analysis, and pull request creation for Azure DevOps in VS Code.",
     "publisher": "axvrma",
     "version": "1.1.3",
     "license": "MIT",
     "icon": "images/icon.png",
     "galleryBanner": {
-        "color": "#0078d4",
+        "color": "#09090F",
         "theme": "dark"
     },
     "repository": {
@@ -26,6 +26,7 @@
         "SCM Providers"
     ],
     "keywords": [
+        "prism",
         "azure devops",
         "pull request",
         "pr",
@@ -59,10 +60,12 @@
         "lint": "eslint src webview/src test --ext .ts,.tsx",
         "test": "vitest run",
         "test:extension": "npm run compile && node scripts/test-extension.mjs",
-        "verify": "npm run typecheck && npm run lint && npm test && npm run compile",
+        "verify": "npm run brand:check && npm run typecheck && npm run lint && npm test && npm run compile",
         "package:inspect": "vsce ls --no-dependencies --tree",
         "test:browser": "npm run compile && playwright test",
-        "licenses": "node scripts/licenses.mjs"
+        "licenses": "node scripts/licenses.mjs",
+        "brand:sync": "node scripts/sync-brand.mjs",
+        "brand:check": "node scripts/sync-brand.mjs --check"
     },
     "devDependencies": {
         "@playwright/test": "^1.64.1",
@@ -98,43 +101,43 @@
             {
                 "command": "extension.openPRCreator",
                 "title": "Create Pull Request",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(git-pull-request)"
             },
             {
                 "command": "extension.raisePR",
                 "title": "Raise PR",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(git-pull-request)"
             },
             {
                 "command": "extension.copyPrUrl",
                 "title": "Copy Last PR URL",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(copy)"
             },
             {
                 "command": "extension.clearPAT",
                 "title": "Clear Azure DevOps PAT",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(trash)"
             },
             {
                 "command": "extension.openSettings",
                 "title": "Open Settings",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(gear)"
             },
             {
                 "command": "extension.generateAITitle",
                 "title": "Generate PR Title with AI",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(sparkle)"
             },
             {
                 "command": "extension.openBranchFlow",
                 "title": "Open Branch Flow",
-                "category": "Azure DevOps",
+                "category": "Prism",
                 "icon": "$(git-merge)"
             }
         ],
@@ -142,8 +145,8 @@
             "activitybar": [
                 {
                     "id": "azureDevopsPr",
-                    "title": "Azure DevOps PR",
-                    "icon": "$(git-pull-request)"
+                    "title": "Prism",
+                    "icon": "images/prism-activity.svg"
                 }
             ]
         },
@@ -152,12 +155,12 @@
                 {
                     "type": "webview",
                     "id": "prHelperSidebarView",
-                    "name": "PR Helper"
+                    "name": "Prism"
                 }
             ]
         },
         "configuration": {
-            "title": "Azure DevOps PR Helper",
+            "title": "Prism",
             "properties": {
                 "azureDevopsPr.orgHost": {
                     "type": "string",
@@ -287,7 +290,7 @@
         "customEditors": [
             {
                 "viewType": "azureDevopsPr.branchFlow",
-                "displayName": "Branch Flow Manager",
+                "displayName": "Prism Branch Flow",
                 "selector": [
                     {
                         "filenamePattern": "*.branchflow.json"

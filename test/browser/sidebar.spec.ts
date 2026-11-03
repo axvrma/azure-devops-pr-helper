@@ -38,3 +38,41 @@ test('sidebar remains usable in a narrow panel and with no recent graphs', async
     await expect(page.locator('#graphCount')).toHaveText('0');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+for (const theme of ['dark', 'light', 'contrast']) {
+    test(`recent graph menu removes only the selected history entry in ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width: 340, height: 850 }); await page.goto(`/sidebar?theme=${theme}`);
+        const first = page.getByRole('button', { name: 'Actions for Release readiness', exact: true });
+        await first.focus(); await page.keyboard.press('ArrowDown');
+        const remove = page.getByRole('menuitem', { name: 'Remove from recent', exact: true });
+        await expect(remove).toBeFocused(); await expect(page.getByText('File stays on disk', { exact: true })).toBeVisible();
+        await page.keyboard.press('Escape'); await expect(first).toBeFocused();
+        await expect(page.getByRole('menu', { name: 'Recent graph actions' })).toBeHidden();
+        await first.click();
+        await page.screenshot({ path: `test-results/sidebar-recent-menu-${theme}.png`, fullPage: true });
+        await remove.click();
+        await expect(page.locator('#graphCount')).toHaveText('1');
+        await expect(page.locator('.graph-file strong')).toHaveText('Release integration');
+        await expect(page.getByRole('button', { name: 'Actions for Release integration', exact: true })).toBeFocused();
+        await expect(page.getByRole('status')).toContainText('Your graph file stays on disk');
+        const messages = await page.evaluate(() => (window as unknown as { messages: unknown[] }).messages);
+        expect(messages).toContainEqual({ command: 'removeRecentGraph', data: { id: 'sample-release-readiness' } });
+        expect(messages).not.toContainEqual(expect.objectContaining({ command: 'openGraph' }));
+        await page.getByRole('button', { name: 'Actions for Release integration', exact: true }).click();
+        await remove.click();
+        await expect(page.locator('#graphCount')).toHaveText('0');
+        await expect(page.getByRole('button', { name: 'Open graph', exact: true })).toBeFocused();
+        await expect(page.locator('#recentGraphs')).toContainText('Your next flow starts here');
+    });
+}
+test('recent menus dismiss outside, remain within a narrow panel and follow host acknowledgements', async ({ page }) => {
+    await page.setViewportSize({ width: 220, height: 750 }); await page.goto('/sidebar');
+    await page.getByRole('button', { name: 'Actions for Release readiness', exact: true }).click();
+    const menu = page.getByRole('menu', { name: 'Recent graph actions' }); await expect(menu).toBeVisible();
+    const bounds = await menu.boundingBox(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(220);
+    await page.getByRole('heading', { name: 'Prism', exact: true }).click(); await expect(menu).toBeHidden();
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { command: 'recentGraphError', data: { message: 'Could not update recent graphs. Your file has not been changed.' } } })));
+    await expect(page.locator('#graphCount')).toHaveText('2');
+    await expect(page.getByRole('status')).toContainText('file has not been changed');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

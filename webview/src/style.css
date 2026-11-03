@@ -129,3 +129,10 @@ body.vscode-high-contrast .branch-card, body.vscode-high-contrast-light .branch-
 /* Existing relationships use separate measured ports; the central handles stay available for new connections. */
 .react-flow__handle.edge-port { width: 6px; height: 6px; opacity: 0; pointer-events: none; }
 .branch-card:hover .edge-port, .branch-card.selected .edge-port { opacity: .6; }
+
+/* Compact Prism identity; interaction colors continue to follow the active editor theme. */
+.prism-mark { width: 24px; height: 24px; color: var(--text); flex: 0 0 24px; vertical-align: middle; }
+.prism-toolbar-brand { display: inline-flex; align-items: center; gap: 6px; padding-right: 10px; margin-right: 2px; border-right: 1px solid var(--line); }
+.prism-toolbar-brand strong { font-size: 12px; font-weight: 600; letter-spacing: -.2px; }
+.canvas-empty > .prism-mark { width: 40px; height: 40px; margin-bottom: 12px; }
+body.vscode-high-contrast .prism-mark path, body.vscode-high-contrast-light .prism-mark path { stroke: currentColor; }

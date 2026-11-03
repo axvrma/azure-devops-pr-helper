@@ -28,3 +28,13 @@ export async function rememberGraph(services: ExtensionServices, uri: vscode.Uri
     await services.setState(RECENT_GRAPHS_KEY, [uri.fsPath, ...recentGraphs(services).filter(p => p !== uri.fsPath)].slice(0, 10));
     updates.fire();
 }
+
+/** Forget a recent-list entry only. This never reads, writes, closes, or deletes the graph file. */
+export async function forgetGraph(services: ExtensionServices, file: string): Promise<boolean> {
+    const before = recentGraphs(services);
+    const after = before.filter(value => value !== file);
+    if (before.length === after.length) { return false; }
+    await services.setState(RECENT_GRAPHS_KEY, after);
+    updates.fire();
+    return true;
+}

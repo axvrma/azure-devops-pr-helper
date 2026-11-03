@@ -7,7 +7,7 @@ import { azureClient, configuredContext } from '../services/pullRequestService';
 import { PRCreatorPanel } from '../webviews/prCreatorPanel';
 import { getNonce } from '../utils/helpers';
 import { getCurrentRepoName } from '../utils/git';
-import { recentGraphs, rememberGraph, selectedRepository } from '../services/workspaceContext';
+import { forgetGraph, recentGraphs, rememberGraph, selectedRepository } from '../services/workspaceContext';
 import { BranchGraph, BranchRef, emptyGraph, RepositoryContext, safeOrganizationUrl } from './domain/model';
 import { parseGraph, serializeGraph, validateGraph } from './domain/graph';
 import { GraphValidationService, ValidationCoordinator } from './application/analysis';
@@ -101,7 +101,7 @@ export class BranchFlowProvider implements vscode.CustomEditorProvider<FlowDocum
         const nonce = getNonce(); const source = panel.webview.cspSource;
         panel.webview.html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${source}; style-src-attr 'unsafe-inline'; img-src ${source} data:; font-src ${source}; connect-src 'none'; base-uri 'none'; form-action 'none';">
-<link rel="stylesheet" href="${panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'app.css'))}"><title>Branch Flow Manager</title></head><body><div id="root"></div><script nonce="${nonce}" src="${panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'app.js'))}"></script></body></html>`;
+<link rel="stylesheet" href="${panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'app.css'))}"><title>Prism Branch Flow</title></head><body><div id="root"></div><script nonce="${nonce}" src="${panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'app.js'))}"></script></body></html>`;
         // React Flow uses style attributes for positions; no inline style blocks or inline script execution are allowed.
         doc.subscriptions.push(panel.webview.onDidReceiveMessage(value => {
             const operation = value && typeof value === 'object' && typeof value.action === 'string' ? value.action : 'Graph action';
@@ -204,6 +204,17 @@ export class BranchFlowProvider implements vscode.CustomEditorProvider<FlowDocum
                 const recent = recentGraphs(this.services);
                 const pick = await vscode.window.showQuickPick(recent, { placeHolder: 'Open recent Branch Flow graph' });
                 if (pick) { await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(pick), VIEW_TYPE); } break;
+            }
+            case 'removeRecent': {
+                const recent = recentGraphs(this.services);
+                if (!recent.length) { vscode.window.showInformationMessage('No recent graphs to remove.'); break; }
+                const pick = await vscode.window.showQuickPick(recent, { placeHolder: 'Remove from recent — the graph file stays on disk' });
+                if (pick && recentGraphs(this.services).includes(pick)) {
+                    await forgetGraph(this.services, pick);
+                    this.state(doc);
+                    this.send(doc, { type: 'notice', message: `Removed ${path.basename(pick)} from recent. The graph file stays on disk.` });
+                }
+                break;
             }
             case 'export': {
                 const uri = await vscode.window.showSaveDialog({ filters: { 'Branch Flow JSON': ['branchflow.json'] }, saveLabel: 'Export JSON' });

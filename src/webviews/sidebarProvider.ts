@@ -7,14 +7,26 @@ import { getCurrentBranch, getCurrentRepoName } from '../utils/git';
 import { getNonce } from '../utils/helpers';
 import { safeAzureLink } from '../utils/urls';
 import { configuredContext } from '../services/pullRequestService';
-import { onWorkspaceContextChanged, recentGraphs, selectedRepository } from '../services/workspaceContext';
+import { forgetGraph, onWorkspaceContextChanged, recentGraphs, selectedRepository } from '../services/workspaceContext';
 import * as path from 'path';
-import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
+import { uiBrandMark, uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'prHelperSidebarView';
 
+    private readonly recentGraphTokens = new Map<string, string>();
+
     constructor(private readonly services: ExtensionServices) {}
+
+    private recentGraphItems(): { id: string; name: string; path: string }[] {
+        const files = recentGraphs(this.services);
+        for (const file of this.recentGraphTokens.keys()) { if (!files.includes(file)) { this.recentGraphTokens.delete(file); } }
+        return files.map(file => {
+            let id = this.recentGraphTokens.get(file);
+            if (!id) { id = getNonce(); this.recentGraphTokens.set(file, id); }
+            return { id, name: path.basename(file), path: file };
+        });
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -65,6 +77,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
                 }
 
+                case 'removeRecentGraph': {
+                    const id = message.data?.id;
+                    if (typeof id !== 'string' || id.length > 128) { return; }
+                    // Resolve a host-issued identity, rather than trusting a path or a stale list index.
+                    const file = [...this.recentGraphTokens].find(([, token]) => token === id)?.[0];
+                    if (!file || !recentGraphs(this.services).includes(file)) { return; }
+                    try {
+                        await forgetGraph(this.services, file);
+                        await webviewView.webview.postMessage({ command: 'recentGraphsUpdated', data: { files: this.recentGraphItems(), removedId: id } });
+                    } catch {
+                        await webviewView.webview.postMessage({ command: 'recentGraphError', data: { message: 'Could not update recent graphs. Your file has not been changed.' } });
+                    }
+                    break;
+                }
+
                 case 'openGraphPicker':
                     await vscode.commands.executeCommand('extension.openBranchFlowFile');
                     break;
@@ -95,7 +122,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     webviewView.webview.postMessage({ command: 'historyUpdated', data: [] });
                     break;
             }
-            } catch { vscode.window.showErrorMessage('PR Helper action failed. Check Settings and retry.'); }
+            } catch { vscode.window.showErrorMessage('Prism action failed. Check Settings and retry.'); }
         });
     }
 
@@ -115,7 +142,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 branch,
                 repo,
                 prHistory,
-                recentGraphs: recentGraphs(this.services).map(file => ({ name: path.basename(file), path: file })),
+                recentGraphs: this.recentGraphItems(),
             },
         });
     }
@@ -131,62 +158,53 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PR Helper</title>
+    <title>Prism</title>
     <link rel="stylesheet" href="${uiStylesUri(webview, this.services.context)}">
 </head>
 <body class="prh-sidebar">
-    <details class="drawer-section" id="prHelperSection" open>
-    <summary>PR Helper</summary>
-    <div class="drawer-content">
-    <div class="context-info">
-        <div class="context-row">
-            <span class="context-label">Branch</span>
-            <span class="context-value" id="branchName">Detecting...</span>
-        </div>
-        <div class="context-row">
-            <span class="context-label">Repository</span>
-            <span class="context-value" id="repoName">Detecting...</span>
-        </div>
+    <header class="prism-sidebar-brand">
+        <div class="sidebar-identity">${uiBrandMark()}<div><h1>Prism</h1><p>Your Git workflow, in focus.</p></div></div>
+        <button id="sidebarSettings" class="sidebar-icon-button" type="button" aria-label="Open Prism settings" title="Open Settings">${uiIcon('settings')}</button>
+    </header>
+    <section class="sidebar-workspace" aria-label="Workspace context">
+        <div class="workspace-eyebrow">WORKSPACE</div>
+        <div class="context-row">${uiIcon('folder')}<span class="context-label">Repository</span><span class="context-value" id="repoName">Detecting…</span></div>
+        <div class="context-row">${uiIcon('branch')}<span class="context-label">Branch</span><span class="context-value branch-context" id="branchName">Detecting…</span></div>
         <div class="connection-statuses">
             <span class="connection-status"><span class="status-dot" id="azureStatus"></span><span>Azure</span><span class="connection-state" id="azureState">Checking</span></span>
             <span class="connection-status"><span class="status-dot" id="aiStatus"></span><span id="aiStatusLabel">AI</span><span class="connection-state" id="aiState">Optional</span></span>
         </div>
-    </div>
-
-    <div id="warningBanner" class="warning-banner hidden">
-        <span>Azure connection needs a PAT.</span>
-        <button id="openSettingsFromWarning" type="button">Settings</button>
-    </div>
-
-    <div class="quick-actions">
-        <button type="button" class="btn-primary primary-action" id="openPRCreatorAction">
-            ${uiIcon('pullRequest')}<span>Create pull request</span>
-        </button>
-    </div>
-
-    <section class="history-section" aria-labelledby="recentPRsTitle">
-        <div class="history-header">
-            <h2 class="history-title" id="recentPRsTitle">Recent pull requests <span class="list-count" id="prCount">0</span></h2>
-            <button class="btn-quiet" id="clearHistoryBtn" type="button" disabled title="Clear pull request history">Clear</button>
-        </div>
-        <div id="prHistoryList">
-            <div class="empty-state">
-                <div class="empty-state-text"><strong>No pull requests yet</strong>Created pull requests will appear here.</div>
-            </div>
-        </div>
     </section>
-
-    </div></details>
-    <details class="drawer-section" id="branchFlowSection" open>
-        <summary>Branch Flow</summary>
-        <div class="drawer-content">
-            <div class="flow-actions"><button id="openBranchFlow" class="btn-secondary" type="button">${uiIcon('plus')}New graph</button><button id="openGraphPicker" class="btn-secondary" type="button">${uiIcon('folder')}Open graph</button></div>
-            <div class="list-heading"><h2 class="history-title">Recent graphs</h2><span class="list-count" id="graphCount">0</span></div>
-            <ul id="recentGraphs" aria-label="Recently opened Branch Flow files"></ul>
-        </div>
-    </details>
+    <div id="warningBanner" class="warning-banner hidden"><span>Connect Azure DevOps to get started.</span><button id="openSettingsFromWarning" type="button">Settings</button></div>
+    <main class="sidebar-sections">
+        <details class="drawer-section" id="branchFlowSection" open>
+            <summary>${uiIcon('branch')}<span>Branch Flow</span><span class="list-count section-count" id="graphCount">0</span></summary>
+            <div class="drawer-content">
+                <p class="section-description">Plan how your branches come together.</p>
+                <div class="flow-actions"><button id="openBranchFlow" class="btn-secondary" type="button">${uiIcon('plus')}New graph</button><button id="openGraphPicker" class="btn-secondary" type="button">${uiIcon('folder')}Open graph</button></div>
+                <div class="list-heading"><h2 class="history-title">Recent graphs</h2><span class="list-note">SAVED LOCALLY</span></div>
+                <ul id="recentGraphs" aria-label="Recently opened Branch Flow files"></ul>
+            </div>
+        </details>
+        <details class="drawer-section" id="prHelperSection" open>
+            <summary>${uiIcon('pullRequest')}<span>Pull Requests</span><span class="list-count section-count" id="prCount">0</span></summary>
+            <div class="drawer-content">
+                <p class="section-description">Prepare changes. Review before you submit.</p>
+                <div class="quick-actions"><button type="button" class="btn-primary primary-action" id="openPRCreatorAction">${uiIcon('pullRequest')}<span>Create pull request</span></button></div>
+                <section class="history-section" aria-labelledby="recentPRsTitle">
+                    <div class="history-header"><h2 class="history-title" id="recentPRsTitle">Recent pull requests</h2><button class="btn-quiet" id="clearHistoryBtn" type="button" disabled title="Clear pull request history">Clear</button></div>
+                    <div id="prHistoryList"><div class="empty-state"><div class="empty-state-text"><strong>No pull requests yet</strong>Created pull requests will appear here.</div></div></div>
+                </section>
+            </div>
+        </details>
+    </main>
+    <div id="recentGraphMenu" class="recent-graph-menu" role="menu" aria-label="Recent graph actions" hidden>
+        <button id="removeRecentGraph" type="button" role="menuitem" aria-label="Remove from recent" aria-describedby="recentGraphKeepFile">${uiIcon('remove')}<span>Remove from recent<small id="recentGraphKeepFile">File stays on disk</small></span></button>
+    </div>
+    <div id="sidebarAnnouncement" class="sidebar-sr-only" role="status" aria-live="polite"></div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
+        document.getElementById('sidebarSettings').addEventListener('click', () => vscode.postMessage({ command: 'openSettings' }));
         document.getElementById('openGraphPicker').addEventListener('click', () => vscode.postMessage({ command: 'openGraphPicker' }));
         const drawerState = vscode.getState?.() || {};
         for (const id of ['prHelperSection', 'branchFlowSection']) {
@@ -219,21 +237,89 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ command: 'clearHistory' });
         });
 
-        function renderRecentGraphs(files) {
+        let recentFiles = [];
+        let menuGraph;
+        let menuTrigger;
+        const graphMenu = document.getElementById('recentGraphMenu');
+        const removeRecentButton = document.getElementById('removeRecentGraph');
+        function closeGraphMenu(restoreFocus = false) {
+            graphMenu.hidden = true;
+            menuTrigger?.setAttribute('aria-expanded', 'false');
+            if (restoreFocus) menuTrigger?.focus();
+            menuGraph = undefined;
+        }
+        function openGraphMenu(file, trigger) {
+            if (!graphMenu.hidden && menuGraph?.id === file.id) { closeGraphMenu(true); return; }
+            closeGraphMenu();
+            menuGraph = file; menuTrigger = trigger;
+            removeRecentButton.disabled = false;
+            trigger.setAttribute('aria-expanded', 'true');
+            graphMenu.hidden = false;
+            const bounds = trigger.getBoundingClientRect();
+            const height = graphMenu.getBoundingClientRect().height;
+            graphMenu.style.left = Math.max(8, Math.min(bounds.right - graphMenu.offsetWidth, innerWidth - graphMenu.offsetWidth - 8)) + 'px';
+            graphMenu.style.top = Math.max(8, bounds.bottom + height + 8 > innerHeight ? bounds.top - height - 4 : bounds.bottom + 4) + 'px';
+            removeRecentButton.focus();
+        }
+        removeRecentButton.addEventListener('click', () => {
+            if (!menuGraph) return;
+            const id = menuGraph.id;
+            closeGraphMenu(true);
+            vscode.postMessage({ command: 'removeRecentGraph', data: { id } });
+        });
+        graphMenu.addEventListener('keydown', event => {
+            if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { event.preventDefault(); removeRecentButton.focus(); }
+            if (event.key === 'Tab') closeGraphMenu(true);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !graphMenu.hidden) { event.preventDefault(); closeGraphMenu(true); }
+        });
+        document.addEventListener('pointerdown', event => {
+            if (!graphMenu.hidden && !graphMenu.contains(event.target) && !menuTrigger?.contains(event.target)) closeGraphMenu();
+        });
+        window.addEventListener('resize', () => closeGraphMenu());
+        window.addEventListener('scroll', () => closeGraphMenu(), true);
+        function renderRecentGraphs(files, removedId) {
             const list = document.getElementById('recentGraphs');
+            const focusedRow = document.activeElement?.closest('[data-graph-id]');
+            const focusedId = focusedRow?.dataset.graphId;
+            const focusMenu = document.activeElement?.classList.contains('graph-menu-trigger');
+            const oldIndex = recentFiles.findIndex(file => file.id === focusedId);
+            closeGraphMenu();
+            recentFiles = Array.isArray(files) ? files : [];
             list.replaceChildren();
-            document.getElementById('graphCount').textContent = String(files?.length || 0);
-            if (!files?.length) { const empty = document.createElement('li'); empty.textContent = 'No graphs opened yet. Open a file or save your first graph.'; empty.className = 'empty-recent'; list.appendChild(empty); return; }
-            files.forEach((file, index) => {
-                const item = document.createElement('li'); const button = document.createElement('button');
+            document.getElementById('graphCount').textContent = String(recentFiles.length);
+            if (!recentFiles.length) {
+                const empty = document.createElement('li'); empty.className = 'empty-recent';
+                empty.innerHTML = '${uiIcon('branch')}<strong>Your next flow starts here</strong><span>No graphs opened yet. Create a graph or open one from your workspace.</span>';
+                list.appendChild(empty);
+            }
+            recentFiles.forEach((file, index) => {
+                const item = document.createElement('li'); item.className = 'recent-graph-row'; item.dataset.graphId = file.id;
+                const button = document.createElement('button');
                 button.type = 'button'; button.title = file.path; button.className = 'graph-file';
                 const icon = document.createElement('span'); icon.className = 'file-icon'; icon.innerHTML = '${uiIcon('file')}';
                 const text = document.createElement('span'); text.className = 'file-text';
-                const name = document.createElement('strong'); name.textContent = file.name.replace(/\\.branchflow\\.json$/, '');
-                const location = document.createElement('small'); location.textContent = file.path;
-                text.append(name, location); button.append(icon, text); button.addEventListener('click', () => vscode.postMessage({ command: 'openGraph', data: { index } }));
-                item.appendChild(button); list.appendChild(item);
+                const name = document.createElement('strong'); name.textContent = file.name.endsWith('.branchflow.json') ? file.name.slice(0, -'.branchflow.json'.length) : file.name;
+                const location = document.createElement('small');
+                const separator = Math.max(file.path.lastIndexOf('/'), file.path.lastIndexOf(String.fromCharCode(92)));
+                location.textContent = separator > 0 ? file.path.slice(0, separator) : file.path;
+                text.append(name, location); button.append(icon, text);
+                button.addEventListener('click', () => vscode.postMessage({ command: 'openGraph', data: { index } }));
+                const more = document.createElement('button'); more.type = 'button'; more.className = 'graph-menu-trigger sidebar-icon-button';
+                more.title = 'Graph actions'; more.setAttribute('aria-label', 'Actions for ' + name.textContent);
+                more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false'); more.setAttribute('aria-controls', 'recentGraphMenu');
+                more.innerHTML = '${uiIcon('more')}';
+                more.addEventListener('click', () => openGraphMenu(file, more));
+                more.addEventListener('keydown', event => { if (event.key === 'ArrowDown') { event.preventDefault(); openGraphMenu(file, more); } });
+                item.append(button, more); list.appendChild(item);
             });
+            if (focusedId) {
+                const next = recentFiles.find(file => file.id === focusedId) || recentFiles[Math.min(Math.max(0, oldIndex), recentFiles.length - 1)];
+                const row = next && Array.from(list.children).find(item => item.dataset.graphId === next.id);
+                (row?.querySelector(focusMenu ? '.graph-menu-trigger' : '.graph-file') || document.getElementById('openGraphPicker')).focus();
+            }
+            if (removedId) showToast('Removed from recent. Your graph file stays on disk.');
         }
         function renderPRHistory(history) {
             document.getElementById('prCount').textContent = String(history?.length || 0);
@@ -284,6 +370,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const toast = document.createElement('div');
             toast.className = 'toast';
             toast.textContent = message;
+            document.getElementById('sidebarAnnouncement').textContent = message;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 2500);
         }
@@ -321,6 +408,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     renderRecentGraphs(ctx.recentGraphs);
                     break;
                 }
+
+                case 'recentGraphsUpdated':
+                    renderRecentGraphs(msg.data.files, msg.data.removedId);
+                    break;
+
+                case 'recentGraphError':
+                    showToast(msg.data.message);
+                    break;
 
                 case 'historyUpdated':
                     renderPRHistory(msg.data);

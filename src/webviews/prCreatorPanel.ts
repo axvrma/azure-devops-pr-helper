@@ -1,4 +1,4 @@
-import { uiIcon, uiResourceRoot, uiStylesUri } from './ui';
+import { uiBrandMark, uiIcon, uiResourceRoot, uiStylesUri } from './ui';
 import * as vscode from 'vscode';
 import { AnalyticsEvents } from '../analytics';
 import { createAIClientFromServices, getAIProviderLabel, normalizeGeneratedTitle, PRPrompts } from '../api/ai';
@@ -41,7 +41,7 @@ export class PRCreatorPanel {
 
         const panel = vscode.window.createWebviewPanel(
             'prCreator',
-            'Create Pull Request',
+            'Prism — Create Pull Request',
             column,
             {
                 enableScripts: true,
@@ -351,7 +351,7 @@ export class PRCreatorPanel {
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Pull Request</title>
+    <title>Prism — Create Pull Request</title>
     <style>
         :root {
             --card-bg: var(--vscode-editor-background);
@@ -811,8 +811,8 @@ export class PRCreatorPanel {
     <div class="container">
         <div class="header">
             <h1>
-                ${uiIcon('pullRequest')}
-                Create Pull Request
+                ${uiBrandMark()}
+                Prism <span class="prism-page-label">Create Pull Request</span>
             </h1>
             <div class="header-actions">
                 <button class="btn-secondary btn-small" id="settingsBtn" title="Open Settings">

@@ -48,3 +48,11 @@ test('actions menu supports keyboard navigation, notifications and persistent er
     const errors = page.getByRole('region', { name: 'Error history' }); await expect(errors).toContainText('Test filesystem refused the save.');
     await page.getByRole('alert').getByRole('button', { name: 'Dismiss notification' }).click(); await expect(errors).toContainText('Test filesystem refused the save.');
 });
+
+test('Actions exposes removal of recent entries as a separate file-preserving command', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Actions', exact: false }).click();
+    await page.getByRole('menuitem', { name: 'Remove Recent…', exact: true }).click();
+    expect(await page.evaluate(() => (window as unknown as { hostActions: unknown[] }).hostActions)).toContainEqual({ type: 'action', action: 'removeRecent' });
+    await expect(page.locator('.branch-card')).toHaveCount(3);
+});

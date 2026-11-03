@@ -1,10 +1,22 @@
-# Azure DevOps PR Helper
+<p><img src="images/icon.png" width="72" height="72" alt="Prism logo"></p>
 
-Create Azure DevOps pull requests and plan branch integration visually inside VS Code. **Branch Flow Manager works without AI, a backend, or a paid service.** Optional Anthropic, Gemini and OpenAI assistance remains available in the existing PR Creator.
+# Prism
 
-## Branch Flow Manager
+**See every branch. Understand every change.**
 
-Run **Azure DevOps: Open Branch Flow**, or use **New graph** in the sidebar’s collapsible **Branch Flow** section. That section also lists recently opened graphs; **PR Helper** has its own collapsible section. New graphs reuse the PR Creator’s selected project and repository. Change the context at any time using the repository control in the graph toolbar. If no selection is available, choose an HTTPS organization, project and repository using the native picker. Configure your PAT in **Azure DevOps: Open Settings** first.
+Prism brings visual branch planning, integration analysis, conflict visibility, and pull request creation into VS Code. Visualize your branch strategy, inspect integration evidence, and prepare changes with confidence. **Branch Flow works without AI, a backend, or a paid service.** Optional Anthropic, Gemini and OpenAI assistance remains available in the existing PR Creator.
+
+Prism is the new name of **Azure DevOps PR Helper**. Its existing extension identifier (`axvrma.azure-devops-pr-helper`), `azureDevopsPr.*` settings, command IDs, stored credentials, and local graph format remain compatible. The display name and command category are now **Prism**.
+
+[Source code](https://github.com/axvrma/azure-devops-pr-helper) · [Report an issue](https://github.com/axvrma/azure-devops-pr-helper/issues)
+
+## Branch Flow
+
+Run **Prism: Open Branch Flow**, or use **New graph** in the sidebar’s collapsible **Branch Flow** section. That section also lists recently opened graphs; **Pull Requests** has its own collapsible section. New graphs reuse the PR Creator’s selected project and repository. Change the context at any time using the repository control in the graph toolbar. If no selection is available, choose an HTTPS organization, project and repository using the native picker. Configure your PAT in **Prism: Open Settings** first.
+
+The primary sidebar keeps repository and branch context above both tools, with connection status and a Settings shortcut. Branch Flow has separate **New graph** and **Open graph** actions and a compact recent-file list.
+
+To tidy the list, open a recent graph’s **…** menu and choose **Remove from recent**. You can also use **Actions → Remove Recent…** in the graph editor. These actions update Prism’s saved recent list only: they do not delete files, change graph contents, or close an open graph. Reopening a closed file or saving the file again adds it back to Recent.
 
 1. Search remote branches and drag them onto the canvas, or use each branch's **+** button.
 2. Connect source A to target B to plan propagation **A → B**. Choose Merge / PR, Rebase target onto source, or unverified Cherry-pick. Forks, convergences and disconnected components are supported; cycles and cross-repository connections are rejected.
@@ -29,7 +41,7 @@ A completed or squash-merged PR does not automatically prove current source ance
 
 ## PR Creator and optional AI
 
-Run **Azure DevOps: Create Pull Request** or **Raise PR**. Select a repository and editable source/target branches, enter a title/description manually, and optionally link comma-separated work-item IDs. **AI** can suggest content using local Git commits and diff context when you configure a provider/key. Manual PR creation and all Branch Flow operations work without AI. PR history retains ten locally stored entries; the last PR URL can be copied from the command palette.
+Run **Prism: Create Pull Request** or **Raise PR**. Select a repository and editable source/target branches, enter a title/description manually, and optionally link comma-separated work-item IDs. **AI** can suggest content using local Git commits and diff context when you configure a provider/key. Manual PR creation and all Branch Flow operations work without AI. PR history retains ten locally stored entries; the last PR URL can be copied from the command palette.
 
 Set up provider, model, token limit and temperature in Settings. AI generation intentionally sends the chosen commit/diff context to that provider. No AI service is called by Branch Flow analysis. Provider model availability and live Azure permissions depend on your account.
 
@@ -67,3 +79,21 @@ Branch Flow adds no telemetry events. Existing PostHog usage events are limited 
 Build/test tooling requires Node **22.12+**; extension users do not need to install Node. Run `npm ci`, `npm run verify`, `npm run test:browser` (after `npx playwright install chromium`), and `npm run test:extension`. Package locally with `npm run vscode:package`; this does not publish. The production host/browser bundles exclude development dependencies. [Release checks, budgets and manual Azure validation](docs/branch-flow/release-verification.md) · [existing-system audit](docs/architecture/existing-system.md) · [implementation checklist](docs/branch-flow/implementation-checklist.md).
 
 MIT · Built by Abhishek Verma. Bundled libraries retain their licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Prism marketing website
+
+The standalone React website lives in [`apps/website`](apps/website/README.md). It has independent dependencies, tests, and Netlify configuration. Website development does not require building or packaging the extension.
+
+## Shared Prism branding
+
+The extension reuses the website’s geometric mark from `apps/website/public/prism-logo.svg`: the Extensions icon, monochrome Activity Bar icon, sidebar, PR Creator, Settings, and Branch Flow all use that geometry. Webview marks follow the active VS Code theme; the website’s purple and cyan accents remain restrained, and high-contrast themes use native foreground colors.
+
+Generated files are checked in, so building the extension does not require the website’s dependencies. To regenerate the SVG, inline mark, and PNG icons after editing the website logo:
+
+```sh
+npm --prefix apps/website ci
+npm run brand:sync
+npm run brand:check
+```
+
+The synchronization command uses the website’s existing Sharp development dependency; it adds no runtime dependency to the extension. `npm run verify` checks that the generated vectors still match the website. The raster icon uses the same mark on the website’s dark surface; the Activity Bar variant is monochrome to follow VS Code’s icon treatment.

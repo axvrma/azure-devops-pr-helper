@@ -78,3 +78,33 @@ it('records files opened from disk in recent graphs, including files not saved i
     const provider = new BranchFlowProvider(svc); const doc = await provider.openCustomDocument(uri, {});
     expect(updates).toHaveBeenCalledWith('branchFlow.recent', [uri.fsPath]); doc.dispose(); provider.dispose();
 });
+
+it('removes a chosen recent entry from Actions without changing the file or current graph', async () => {
+    const { window } = await import('vscode');
+    const { RECENT_GRAPHS_KEY } = await import('../../src/services/workspaceContext');
+    const file = path.join(directory, 'kept.branchflow.json');
+    const content = JSON.stringify(graph()); await fs.writeFile(file, content);
+    const svc = services(); const values = new Map<string, unknown>([[RECENT_GRAPHS_KEY, [file]]]);
+    svc.getState = <T>(key: string): T | undefined => values.get(key) as T | undefined;
+    svc.setState = async (key, value) => { values.set(key, value); };
+    const provider = new BranchFlowProvider(svc);
+    const doc = await provider.openCustomDocument(Uri.from({ scheme: 'untitled', path: 'new.branchflow.json' }), {});
+    const view = panel(); await provider.resolveCustomEditor(doc, view.value);
+    const original = doc.graph;
+    try {
+        window.showQuickPick.mockResolvedValueOnce(undefined);
+        await view.send({ type: 'action', action: 'removeRecent' });
+        expect(values.get(RECENT_GRAPHS_KEY)).toEqual([file]);
+        window.showQuickPick.mockResolvedValueOnce('/untrusted/not-a-recent-graph.branchflow.json');
+        await view.send({ type: 'action', action: 'removeRecent' });
+        expect(values.get(RECENT_GRAPHS_KEY)).toEqual([file]);
+        window.showQuickPick.mockResolvedValueOnce(file);
+        await view.send({ type: 'action', action: 'removeRecent' });
+        expect(values.get(RECENT_GRAPHS_KEY)).toEqual([]);
+        expect(await fs.readFile(file, 'utf8')).toBe(content);
+        expect(doc.graph).toBe(original); expect(doc.dirty).toBe(false);
+        expect(view.sent).toContainEqual({ type: 'notice', message: 'Removed kept.branchflow.json from recent. The graph file stays on disk.' });
+        const reopened = await provider.openCustomDocument(Uri.file(file), {});
+        expect(values.get(RECENT_GRAPHS_KEY)).toEqual([file]); reopened.dispose();
+    } finally { doc.dispose(); provider.dispose(); }
+});

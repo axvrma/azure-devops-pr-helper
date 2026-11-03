@@ -1,9 +1,20 @@
 # Changelog
 
-All notable changes to the "Azure DevOps PR Helper" extension will be documented in this file.
+All notable changes to the "Prism" extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Remove individual graph entries from Recent using a sidebar row menu or the graph editor’s Actions → Remove Recent… picker. Files stay on disk and open graphs remain unchanged.
+
+### Changed
+- Refine the primary sidebar with shared workspace context, a compact Settings shortcut, distinct tool sections, clearer file rows, and keyboard-accessible recent-graph menus.
+- Rename the visible application to Prism across the extension listing, command category, Activity Bar, sidebar, settings and editor panels. Keep the extension ID, configuration keys, command IDs, saved state and graph format compatible.
+- Reuse the website’s original geometric Prism mark for SVG/PNG icons and themed webview branding, with a reproducible asset synchronization command.
+- Refresh the README with Prism’s identity, current commands and shared branding instructions.
 
 ## [1.1.3] - 2026-10-26
 
