@@ -6,9 +6,11 @@
 
 Prism brings visual branch planning, integration analysis, conflict visibility, and pull request creation into VS Code. Visualize your branch strategy, inspect integration evidence, and prepare changes with confidence. **Branch Flow works without AI, a backend, or a paid service.** Optional Anthropic, Gemini and OpenAI assistance remains available in the existing PR Creator.
 
-Prism is the new name of **Azure DevOps PR Helper**. Its existing extension identifier (`axvrma.azure-devops-pr-helper`), `azureDevopsPr.*` settings, command IDs, stored credentials, and local graph format remain compatible. The display name and command category are now **Prism**.
+Prism’s extension identifier is **`axvrma.prism`**. Its `azureDevopsPr.*` setting names, command IDs, and `.branchflow.json` file format stay compatible.
 
-[Source code](https://github.com/axvrma/azure-devops-pr-helper) · [Report an issue](https://github.com/axvrma/azure-devops-pr-helper/issues)
+If you installed an earlier build under the previous extension identity, disable or uninstall that copy before enabling Prism to avoid duplicate command registrations. VS Code scopes credentials and history by extension ID, so re-enter your Azure PAT and optional AI provider keys, then reopen saved graph files. Extension-scoped credentials, PR history, and recent-file history do not transfer automatically; your graph files remain on disk.
+
+[Source code](https://github.com/axvrma/prism) · [Report an issue](https://github.com/axvrma/prism/issues)
 
 ## Branch Flow
 
@@ -76,7 +78,23 @@ Branch Flow adds no telemetry events. Existing PostHog usage events are limited 
 
 ## Development and release
 
-Build/test tooling requires Node **22.12+**; extension users do not need to install Node. Run `npm ci`, `npm run verify`, `npm run test:browser` (after `npx playwright install chromium`), and `npm run test:extension`. Package locally with `npm run vscode:package`; this does not publish. The production host/browser bundles exclude development dependencies. [Release checks, budgets and manual Azure validation](docs/branch-flow/release-verification.md) · [existing-system audit](docs/architecture/existing-system.md) · [implementation checklist](docs/branch-flow/implementation-checklist.md).
+Build/test tooling uses **Node 22.12+ within the 22.x release line**, selected by the root `.nvmrc` and CI. Node 24.x and 26+ are also accepted by the extension toolchain; the standalone website targets Node 22. Extension users do not need to install Node.
+
+From the repository root, select the runtime **before** installing dependencies or packaging:
+
+```sh
+nvm install
+nvm use
+node --version
+npm ci
+npm run vscode:package
+```
+
+If you use another Node version manager, select Node 22.12+ in the 22.x release line. The version check must show `v22.12.0` or newer in that release line. Packaging creates a local `.vsix`; it does not publish it.
+
+An error such as `node:util does not provide an export named styleText` means an older Node runtime is loading the current build tools. Select Node 22 using the commands above, then rerun `npm ci`. The project now checks Node at install, verification, test and build entry points so unsupported versions receive these instructions before loading Vite/Vitest.
+
+Run `npm run verify`, `npm run test:browser` (after `npx playwright install chromium`), and `npm run test:extension` for the remaining checks. The production host/browser bundles exclude development dependencies. [Release checks, budgets and manual Azure validation](docs/branch-flow/release-verification.md) · [existing-system audit](docs/architecture/existing-system.md) · [implementation checklist](docs/branch-flow/implementation-checklist.md).
 
 MIT · Built by Abhishek Verma. Bundled libraries retain their licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

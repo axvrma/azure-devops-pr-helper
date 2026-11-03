@@ -374,7 +374,7 @@ export function App() {
                 </div>
                 <span className="repo-owner">axvrma /</span>
                 <External className="repo-name">
-                  azure-devops-pr-helper <ExternalLink size={12} />
+                  prism <ExternalLink size={12} />
                 </External>
                 <p>
                   Visual branch integration planning

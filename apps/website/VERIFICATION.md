@@ -86,7 +86,7 @@ These are local measurements, not production guarantees or an accessibility cert
 
 - Root netlify.toml selects apps/website, Node 22, a locked installation, and dist output. It includes asset caching and CSP/security headers, with no SPA fallback or server functions. The browser test checks policy compatibility; actual hosted response headers still require verification after deployment.
 - Netlify's production URL or VITE_SITE_URL supplies the canonical origin. The isolated SEO test uses a reserved .invalid test origin and removes its temporary output. The normal local build has no invented domain or sitemap. Configure the actual URL and rebuild for launch.
-- GitHub currently redirects the requested azure-devops-pr-helper repository and issues links to axvrma/prism. The website deliberately retains the user-specified URLs. No remote or repository settings were changed.
+- Product and issue links now point directly to axvrma/prism. The previous local Lighthouse measurements predate this URL update. No remote or repository settings were changed.
 - The MIT license was confirmed from the local product LICENSE. Font notices ship with the static output.
 - Product representations and evidence are explicitly labeled conceptual/sample. No live Azure repository was accessed.
 - No deployment, site registration, publication, domain changes, PR creation, or other external write was performed.

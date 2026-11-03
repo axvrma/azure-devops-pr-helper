@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add a root Node 22 version file and dependency-free runtime checks for installation, testing, builds and packaging, with setup instructions for unsupported Node versions.
 - Remove individual graph entries from Recent using a sidebar row menu or the graph editor’s Actions → Remove Recent… picker. Files stay on disk and open graphs remain unchanged.
 
 ### Changed
 - Refine the primary sidebar with shared workspace context, a compact Settings shortcut, distinct tool sections, clearer file rows, and keyboard-accessible recent-graph menus.
-- Rename the visible application to Prism across the extension listing, command category, Activity Bar, sidebar, settings and editor panels. Keep the extension ID, configuration keys, command IDs, saved state and graph format compatible.
+- Rename the application and extension package to Prism across metadata, GitHub links, tests, documentation, Activity Bar, sidebar, settings and editor panels. The extension identifier is now axvrma.prism; configuration keys, command IDs and graph file format remain compatible. Credentials and history scoped to a previous extension identity require reconfiguration.
 - Reuse the website’s original geometric Prism mark for SVG/PNG icons and themed webview branding, with a reproducible asset synchronization command.
 - Refresh the README with Prism’s identity, current commands and shared branding instructions.
 

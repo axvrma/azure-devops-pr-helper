@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 export async function run(): Promise<void> {
-    const extension = vscode.extensions.getExtension('axvrma.azure-devops-pr-helper');
+    const extension = vscode.extensions.getExtension('axvrma.prism');
     assert.ok(extension, 'Extension is discoverable');
     await extension!.activate(); assert.ok(extension!.isActive);
     const commands = await vscode.commands.getCommands(true);

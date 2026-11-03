@@ -136,7 +136,7 @@ After deployment, verify the canonical origin and social preview using the real 
 
 ## Links and licenses
 
-All primary product links deliberately use the requested URL: [axvrma/azure-devops-pr-helper](https://github.com/axvrma/azure-devops-pr-helper). During verification, GitHub redirected this URL and its issues path to `axvrma/prism`. The supplied URLs remain in the website; no repository settings or remotes were changed.
+All primary product links point to [axvrma/prism](https://github.com/axvrma/prism), with issues at [axvrma/prism/issues](https://github.com/axvrma/prism/issues). The repository name, extension package name, and website product links use Prism. No repository settings or remotes were changed.
 
 The parent project's [MIT license](../../LICENSE) applies. Geist fonts use SIL Open Font License 1.1; the full notices ship in `public/fonts`. Dependencies retain their own licenses. React Flow attribution remains visible. There are no invented adoption metrics, testimonials, Marketplace links, or security guarantees.
 

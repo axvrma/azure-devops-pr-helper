@@ -1,5 +1,5 @@
 {
-    "name": "azure-devops-pr-helper",
+    "name": "prism",
     "displayName": "Prism",
     "description": "See every branch. Understand every change. Visual branch planning, integration analysis, and pull request creation for Azure DevOps in VS Code.",
     "publisher": "axvrma",
@@ -12,12 +12,12 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/axvrma/azure-devops-pr-helper"
+        "url": "https://github.com/axvrma/prism"
     },
     "bugs": {
-        "url": "https://github.com/axvrma/azure-devops-pr-helper/issues"
+        "url": "https://github.com/axvrma/prism/issues"
     },
-    "homepage": "https://github.com/axvrma/azure-devops-pr-helper#readme",
+    "homepage": "https://github.com/axvrma/prism#readme",
     "engines": {
         "vscode": "^1.60.0"
     },
@@ -54,18 +54,21 @@
     "scripts": {
         "vscode:package": "npm run verify && vsce package --no-dependencies",
         "vscode:prepublish": "npm run compile",
-        "compile": "npm run typecheck && node scripts/build.mjs && vite build --config webview/vite.config.mts && npm run licenses",
-        "watch": "node scripts/build.mjs --watch",
+        "compile": "node scripts/check-node.mjs && npm run typecheck && node scripts/build.mjs && vite build --config webview/vite.config.mts && npm run licenses",
+        "watch": "node scripts/check-node.mjs && node scripts/build.mjs --watch",
         "typecheck": "tsc --noEmit -p . && tsc --noEmit -p webview",
         "lint": "eslint src webview/src test --ext .ts,.tsx",
-        "test": "vitest run",
+        "test": "node scripts/check-node.mjs && npm run test:tooling && vitest run",
         "test:extension": "npm run compile && node scripts/test-extension.mjs",
-        "verify": "npm run brand:check && npm run typecheck && npm run lint && npm test && npm run compile",
-        "package:inspect": "vsce ls --no-dependencies --tree",
+        "verify": "npm run check:node && npm run brand:check && npm run typecheck && npm run lint && npm test && npm run compile",
+        "package:inspect": "node scripts/check-node.mjs && vsce ls --no-dependencies --tree",
         "test:browser": "npm run compile && playwright test",
         "licenses": "node scripts/licenses.mjs",
         "brand:sync": "node scripts/sync-brand.mjs",
-        "brand:check": "node scripts/sync-brand.mjs --check"
+        "brand:check": "node scripts/sync-brand.mjs --check",
+        "check:node": "node scripts/check-node.mjs",
+        "preinstall": "node scripts/check-node.mjs",
+        "test:tooling": "node --test test/tooling/check-node.test.mjs"
     },
     "devDependencies": {
         "@playwright/test": "^1.64.1",

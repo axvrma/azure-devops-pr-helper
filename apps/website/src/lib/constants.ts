@@ -1,4 +1,4 @@
-export const REPO = "https://github.com/axvrma/azure-devops-pr-helper";
+export const REPO = "https://github.com/axvrma/prism";
 export const ISSUES = `${REPO}/issues`;
 export const NAV = [
   { label: "Features", href: "#features" },

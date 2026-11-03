@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilderSource from "axe-core";
-const repository = "https://github.com/axvrma/azure-devops-pr-helper";
+const repository = "https://github.com/axvrma/prism";
 test("graph scenarios, branch and connection inspectors, analysis, zoom and reset", async ({
   page,
 }) => {

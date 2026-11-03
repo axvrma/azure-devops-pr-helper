@@ -28,3 +28,4 @@ out/**
 .github/**
 apps/**
 netlify.toml
+.nvmrc
